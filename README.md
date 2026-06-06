@@ -166,7 +166,7 @@ segmentation_tool/
 │   │   │   ├── rwkv/             (4 modules)    #     RWKV: RWKV-UNet, U-RWKV, MD-RWKV, RIR-Zigzag
 │   │   │   ├── linear_attn/      (5 modules)    #     Linear attention: RetNet, Linformer, Performer, TTT, xLSTM
 │   │   │   ├── kan_mlp/          (4 modules)    #     KAN/MLP: UKAN, Rolling-UNet, UNeXt, Wav-KAN
-│   │   │   ├── foundation/       (38 modules)   #     Foundation models (DPT head)
+│   │   │   ├── foundation/       (39 modules)   #     Foundation models (DPT head)
 │   │   │   │   ├── general/      (5)            #       DINOv2, DINOv3, DINO, CLIP-ViT, SAM-ViT
 │   │   │   │   ├── pathology/    (6)            #       Phikon, UNI, PLIP, MUSK, PathFoundation, Phikon-v2
 │   │   │   │   ├── radiology/    (4)            #       Rad-DINO, CXR-Foundation, OmniRad, MedSigLIP
@@ -186,8 +186,7 @@ segmentation_tool/
 │   │   │   ├── mlp/              (2 modules)    #     MLP: SegFormer MLP, MLP Decoder
 │   │   │   ├── specific/         (12 modules)   #     Network-specific: TransUNet CUP, HiFormer, FAT-Net, MALUNet, EGE-UNet, ...
 │   │   │   ├── pyramid/          (1 module)     #     Pyramid: UPerNet
-│   │   │   ├── mamba/            (1 module)     #     Mamba: VM-UNet
-│   │   │   └── gcn_lib/          (4 modules)    #     Graph convolution: G-CASCADE dependency
+│   │   │   └── mamba/            (1 module)     #     Mamba: VM-UNet
 │   │   ├── bottlenecks/          (17 modules)   #   17 bottlenecks: none, basic, ASPP, DenseASPP, PPM, Transformer, SE, CBAM, ...
 │   │   ├── skip_connections/                    #   25 skip connections
 │   │   │   ├── basic/            (2 modules)    #     Basic: concat, dense
@@ -233,6 +232,16 @@ segmentation_tool/
 │   │   └── metrics.py                           #   Evaluation metrics: Dice, IoU, HD95, NSD
 │   ├── model_builder.py                         # YAML → model auto-assembler
 │   └── registry.py                              # 6 registries: ENCODER / DECODER / SKIP / BOTTLENECK / LOSS / AUGMENTATION
+├── data/                                        # Dataset root (user datasets go here)
+│   ├── YourDataset/                             #   Your custom dataset
+│   ├── source/                                  #   Domain adaptation source
+│   ├── target/                                  #   Domain adaptation target
+│   ├── target_val/                              #   Domain adaptation validation
+│   └── test_dummy/                              #   Dummy test data
+├── figs/                                        # Figures & logos
+│   └── logo.png                                 #   Project logo
+├── examples/                                    # Usage examples
+│   └── grounding_dino_example.py                #   GroundingDINO detection example
 ├── configs/                      (878 yamls)    # YAML configs
 │   ├── architectures/            (751 yamls)    #   Network architecture configs
 │   │   ├── networks/             (281 yamls)    #     Complete networks (general/acdc/synapse × 120+ arch)
@@ -240,7 +249,7 @@ segmentation_tool/
 │   │   ├── decoder_study/        (121 yamls)    #     Decoder ablation (3 enc × 40 dec)
 │   │   ├── skip_study/           (75 yamls)     #     Skip ablation (3 enc × 25 skip)
 │   │   ├── bottleneck_study/     (51 yamls)     #     Bottleneck ablation (3 enc × 17 bn)
-│   │   └── foundation/           (57 yamls)     #     Foundation models (9 modalities × 38 models)
+│   │   └── foundation/           (57 yamls)     #     Foundation models (9 modalities × 39 models)
 │   ├── training_paradigms/       (99 yamls)     #   Training paradigm configs
 │   │   ├── semi_supervision/     (21 yamls)     #     Semi-supervised (21 methods)
 │   │   ├── domain_adaptation/    (18 yamls)     #     Domain adaptation (18 methods)
@@ -282,7 +291,9 @@ segmentation_tool/
 ├── train_distillation.py                        # Knowledge distillation training (27 methods)
 ├── train_text_guided.py                         # Text-guided training (13 models)
 ├── test.py                                      # Inference / testing
-└── profile_model.py                             # FLOPs / params / FPS profiling
+├── profile_model.py                             # FLOPs / params / FPS profiling
+├── setup.py                                     # Package installation
+└── requirements.txt                             # Python dependencies
 ```
 
 ---
@@ -291,7 +302,7 @@ segmentation_tool/
 
 > Detailed docs: [docs/models/](docs/models/README.md)
 
-### Complete Networks — 120+
+### Complete Networks — 136
 
 | Category | Count | Examples |
 |---|---|---|
@@ -306,9 +317,9 @@ segmentation_tool/
 
 > Full list: [docs/models/networks.md](docs/models/networks.md)
 
-### Encoders — 93
+### Encoders — 172
 
-**Highlight: 38 foundation model encoders covering 9 medical modalities**
+**Highlight: 39 foundation model encoders covering 9 medical modalities**
 
 | Modality | Models |
 |---|---|
@@ -332,7 +343,7 @@ encoder:
 
 > Full list: [docs/models/encoders.md](docs/models/encoders.md)
 
-### Decoders — 38+
+### Decoders — 40
 
 | Category | Count | Examples |
 |---|---|---|

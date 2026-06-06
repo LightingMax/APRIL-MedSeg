@@ -167,7 +167,7 @@ segmentation_tool/
 │   │   │   ├── rwkv/             (4 modules)    #     RWKV: RWKV-UNet, U-RWKV, MD-RWKV, RIR-Zigzag
 │   │   │   ├── linear_attn/      (5 modules)    #     线性注意力: RetNet, Linformer, Performer, TTT, xLSTM
 │   │   │   ├── kan_mlp/          (4 modules)    #     KAN/MLP: UKAN, Rolling-UNet, UNeXt, Wav-KAN
-│   │   │   ├── foundation/       (38 modules)   #     Foundation 模型 (DPT head)
+│   │   │   ├── foundation/       (39 modules)   #     Foundation 模型 (DPT head)
 │   │   │   │   ├── general/      (5)            #       DINOv2, DINOv3, DINO, CLIP-ViT, SAM-ViT
 │   │   │   │   ├── pathology/    (6)            #       Phikon, UNI, PLIP, MUSK, PathFoundation, Phikon-v2
 │   │   │   │   ├── radiology/    (4)            #       Rad-DINO, CXR-Foundation, OmniRad, MedSigLIP
@@ -187,8 +187,7 @@ segmentation_tool/
 │   │   │   ├── mlp/              (2 modules)    #     MLP: SegFormer MLP, MLP Decoder
 │   │   │   ├── specific/         (12 modules)   #     网络专属: TransUNet CUP, HiFormer, FAT-Net, MALUNet, EGE-UNet, ...
 │   │   │   ├── pyramid/          (1 module)     #     金字塔: UPerNet
-│   │   │   ├── mamba/            (1 module)     #     Mamba: VM-UNet
-│   │   │   └── gcn_lib/          (4 modules)    #     图卷积: G-CASCADE 依赖
+│   │   │   └── mamba/            (1 module)     #     Mamba: VM-UNet
 │   │   ├── bottlenecks/          (17 modules)   #   17 个瓶颈层: none, basic, ASPP, DenseASPP, PPM, Transformer, SE, CBAM, ...
 │   │   ├── skip_connections/                    #   25 个跳跃连接
 │   │   │   ├── basic/            (2 modules)    #     基础: concat, dense
@@ -234,6 +233,16 @@ segmentation_tool/
 │   │   └── metrics.py                           #   评估指标: Dice, IoU, HD95, NSD
 │   ├── model_builder.py                         # YAML → 模型自动组装器
 │   └── registry.py                              # 6 个注册表: ENCODER / DECODER / SKIP / BOTTLENECK / LOSS / AUGMENTATION
+├── data/                                        # 数据集根目录（用户数据集放在这里）
+│   ├── YourDataset/                             #   你的自定义数据集
+│   ├── source/                                  #   域适应源域
+│   ├── target/                                  #   域适应目标域
+│   ├── target_val/                              #   域适应验证集
+│   └── test_dummy/                              #   虚拟测试数据
+├── figs/                                        # 图片与 logo
+│   └── logo.png                                 #   项目 logo
+├── examples/                                    # 使用示例
+│   └── grounding_dino_example.py                #   GroundingDINO 检测示例
 ├── configs/                      (878 yamls)    # YAML 配置
 │   ├── architectures/            (751 yamls)    #   网络结构配置
 │   │   ├── networks/             (281 yamls)    #     完整网络 (general/acdc/synapse × 120+ arch)
@@ -241,7 +250,7 @@ segmentation_tool/
 │   │   ├── decoder_study/        (121 yamls)    #     Decoder 消融 (3 enc × 40 dec)
 │   │   ├── skip_study/           (75 yamls)     #     skip 消融 (3 enc × 25 skip)
 │   │   ├── bottleneck_study/     (51 yamls)     #     bottleneck 消融 (3 enc × 17 bn)
-│   │   └── foundation/           (57 yamls)     #     foundation 模型 (9 模态 × 38 模型)
+│   │   └── foundation/           (57 yamls)     #     Foundation 模型 (9 模态 × 39 模型)
 │   ├── training_paradigms/       (99 yamls)     #   训练范式配置
 │   │   ├── semi_supervision/     (21 yamls)     #     半监督 (21 方法)
 │   │   ├── domain_adaptation/    (18 yamls)     #     域适应 (18 方法)
@@ -283,7 +292,9 @@ segmentation_tool/
 ├── train_distillation.py                        # 知识蒸馏训练 (27 方法)
 ├── train_text_guided.py                         # 文本引导训练 (13 模型)
 ├── test.py                                      # 推理 / 测试
-└── profile_model.py                             # FLOPs / 参数量 / FPS 分析
+├── profile_model.py                             # FLOPs / 参数量 / FPS 分析
+├── setup.py                                     # 包安装配置
+└── requirements.txt                             # Python 依赖
 ```
 
 ---
@@ -292,7 +303,7 @@ segmentation_tool/
 
 > 详细文档: [docs/models/](docs/models/README_CN.md)
 
-### 完整网络 — 120+ 个
+### 完整网络 — 136 个
 
 | 类别 | 数量 | 代表模型 |
 |---|---|---|
@@ -307,9 +318,9 @@ segmentation_tool/
 
 > 详细列表: [docs/models/networks.md](docs/models/networks.md)
 
-### 编码器 — 93 个
+### 编码器 — 172 个
 
-**亮点：38 个 Foundation 模型编码器，覆盖 9 个医学模态**
+**亮点：39 个 Foundation 模型编码器，覆盖 9 个医学模态**
 
 | 模态 | 模型 |
 |---|---|
@@ -333,7 +344,7 @@ encoder:
 
 > 详细列表: [docs/models/encoders.md](docs/models/encoders.md)
 
-### 解码器 — 38+ 个
+### 解码器 — 40 个
 
 | 类别 | 数量 | 代表模型 |
 |---|---|---|
