@@ -349,6 +349,7 @@ segmentation_tool/
 │   │   ├── reproducibility.py                   #   Reproducibility (global seed + cuDNN deterministic)
 │   │   ├── weight_downloader.py                 #   Automatic weight download + manual URL hints
 │   │   └── metrics.py                           #   Evaluation metrics: Dice, IoU, HD95, NSD
+│   ├── text_guided.py                           # Text-guided segmentation (CRIS, BiomedParse, LanGuideMedSeg, ...)
 │   ├── model_builder.py                         # YAML → model auto-assembler
 │   └── registry.py                              # 6 registries: ENCODER / DECODER / SKIP / BOTTLENECK / LOSS / AUGMENTATION
 ├── data/                                        # Dataset root (user datasets go here)
@@ -393,11 +394,15 @@ segmentation_tool/
 │   │   ├── run_da_study.sh                      #     Domain adaptation paradigm comparison (8 methods)
 │   │   ├── run_kd_study.sh                      #     Knowledge distillation comparison (7 methods)
 │   │   └── run_weak_study.sh                    #     Weakly supervised paradigm comparison (6 methods)
+│   ├── check_config_paths.py                    #   Check config path references across docs/scripts
+│   ├── download_hf_dataset.py                   #   Download HuggingFace datasets
+│   ├── download_timm_pretrained.py              #   Download timm pretrained weights
 │   ├── export_onnx.py                           #   ONNX model export (dynamic size + ORT verification)
-│   ├── visualize.py                             #   Prediction visualization (input + pred + overlay)
-│   ├── test_all_configs.py                      #   Config batch testing (build + forward + loss)
-│   └── prepare_qata_mosmed.py                   #   QaTa-COV19 / MosMedData+ dataset validation
-├── docs/                         (15 docs)      # Detailed documentation
+│   ├── gen_standalone_yamls.py                  #   Generate standalone model YAML configs
+│   ├── prepare_qata_mosmed.py                   #   QaTa-COV19 / MosMedData+ dataset validation
+│   └── visualize.py                             #   Prediction visualization (input + pred + overlay)
+├── docs/                         (36 docs)      # Detailed documentation
+│   ├── tutorial/                 (21 files)     #   Step-by-step tutorial (01-09, EN+CN, README, complete_guide)
 │   ├── models/                                  #   Model docs: overview, networks, encoders, decoders, skip, bottleneck
 │   ├── paradigms/                               #   Paradigm docs: infrastructure, semi, weak, DA, distillation, text-guided
 │   ├── deployment/                              #   Deployment docs: ONNX, FLOPs, params, FPS

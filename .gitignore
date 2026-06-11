@@ -26,6 +26,7 @@ Thumbs.db
 
 # Output & generated
 output/
+test_output_text_guided/
 *.log
 *.onnx
 *.npz
