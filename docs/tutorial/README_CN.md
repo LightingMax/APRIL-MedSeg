@@ -25,18 +25,11 @@
 | [02](02_unet_CN.md) | **U-Net 详解** | 编码器-解码器架构、跳跃连接、U-Net 家族、YAML 配置、训练命令 |
 | [03](03_data_CN.md) | **数据与预处理** | 数据格式、目录约定、切分策略、增强管线、自定义数据集 |
 | [04](04_training_CN.md) | **训练与评估** | 损失函数、优化器、学习率调度、AMP/DDP、评估流程、日志可视化 |
-
-### 后续规划
-
-> **未完待续** -- 以下章节已规划，将在后续更新中逐步添加。
-
-| 章节 | 标题 | 覆盖内容 | 状态 |
-|------|------|----------|------|
-| 05 | 编码器进阶 | CNN / Transformer / Mamba / RWKV 编码器对比 | 规划中 |
-| 06 | 解码器与跳跃连接 | CASCADE / EMCAD / Attention Gate | 规划中 |
-| 07 | Foundation 模型 | 预训练 ViT 编码器、DPT head、微调策略 | 规划中 |
-| 08 | 高级训练范式 | 半监督 / 域适应 / 蒸馏 / 弱监督 | 规划中 |
-| 09 | 部署与推理 | ONNX 导出 / TTA / 集成推理 | 规划中 |
+| [05](05_encoders_CN.md) | **编码器进阶** | CNN / Transformer / Mamba / RWKV 编码器对比、timm 动态编码器、特征提取 |
+| [06](06_decoders_CN.md) | **解码器与跳跃连接** | CASCADE / EMCAD / Attention Gate、解码器消融实验、跳跃连接分类 |
+| [07](07_foundation_CN.md) | **Foundation 模型** | 预训练 ViT 编码器、DPT head、微调策略、9 大医学模态 |
+| [08](08_paradigms_CN.md) | **高级训练范式** | 半监督、域适应、知识蒸馏、弱监督、文本引导 |
+| [09](09_deployment_CN.md) | **部署与推理** | ONNX 导出、TTA、集成推理、MLLM pipeline、模型性能分析 |
 
 ---
 

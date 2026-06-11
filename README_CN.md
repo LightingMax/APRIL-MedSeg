@@ -114,14 +114,117 @@ torchrun --nproc_per_node=4 train.py \
     --output_dir output/swinunet --amp
 ```
 
-### 2. 半监督训练
+### 2. 推理 / 测试
 
 ```bash
-python semi_train.py --config configs/training_paradigms/semi_supervision/mean_teacher.yaml \
-    --output_dir output/semi_mt
+# 单模型评估
+python test.py --config configs/architectures/networks/general/transunet.yaml \
+    --checkpoint output/best_model.pth
+
+# 保存预测结果
+python test.py --config configs/architectures/networks/general/transunet.yaml \
+    --checkpoint output/best_model.pth --save_pred --output_dir test_output/
+
+# 多 checkpoint 集成（logit 平均）
+python test.py --config configs/architectures/networks/general/transunet.yaml \
+    --checkpoint ckpt_a.pth ckpt_b.pth ckpt_c.pth \
+    --ensemble-weights 0.5 0.3 0.2 \
+    --ensemble-average logit
+
+# 测试时增强（TTA）
+python test.py --config configs/architectures/networks/general/transunet.yaml \
+    --checkpoint output/best_model.pth \
+    --tta \
+    --tta-augs identity rot90 rot180 rot270 hflip vflip \
+    --tta-merge mean
+
+# TTA + 集成 组合使用
+python test.py --config configs/architectures/networks/general/transunet.yaml \
+    --checkpoint ckpt_a.pth ckpt_b.pth \
+    --ensemble-average logit \
+    --tta --tta-merge mean
 ```
 
-### 3. ONNX 导出
+### 3. 半监督训练
+
+```bash
+# Mean Teacher
+python semi_train.py --config configs/training_paradigms/semi_supervision/mean_teacher.yaml \
+    --output_dir output/semi_mt
+
+# CPS（交叉伪监督）
+python semi_train.py --config configs/training_paradigms/semi_supervision/cps.yaml \
+    --output_dir output/semi_cps
+```
+
+### 4. 域适应训练
+
+```bash
+# AdvEnt
+python train_domain_adaptation.py \
+    --config configs/training_paradigms/domain_adaptation/advent.yaml \
+    --output_dir output/da_advent
+
+# TENT（测试时自适应）
+python train_domain_adaptation.py \
+    --config configs/training_paradigms/domain_adaptation/tent.yaml \
+    --output_dir output/da_tent
+```
+
+### 5. 知识蒸馏训练
+
+```bash
+python train_distillation.py \
+    --teacher_config configs/training_paradigms/distillation/teacher_large.yaml \
+    --student_config configs/training_paradigms/distillation/student_small.yaml \
+    --distillation_type logit \
+    --temperature 4.0 \
+    --alpha 0.5 \
+    --output_dir output/kd_logit
+```
+
+### 6. 弱监督训练
+
+```bash
+# 边界框监督
+python train_weakly_supervised.py \
+    --config configs/training_paradigms/weak_supervision/box_supervised.yaml \
+    --supervision_type box \
+    --output_dir output/weak_box
+
+# 基于 CAM
+python train_weakly_supervised.py \
+    --config configs/training_paradigms/weak_supervision/cam.yaml \
+    --supervision_type cam \
+    --output_dir output/weak_cam
+```
+
+### 7. 文本引导训练
+
+```bash
+# 训练
+python train_text_guided.py \
+    --config configs/training_paradigms/text_guided/synapse_clip.yaml \
+    --output_dir output/text_cris
+
+# 测试（自动识别：可训练模型 vs 推理 pipeline）
+python test_text_guided.py \
+    --config configs/training_paradigms/text_guided/synapse_clip.yaml \
+    --checkpoint output/text_cris/best_model.pth
+
+# 测试推理-only pipeline（无需 checkpoint）
+python test_text_guided.py \
+    --config configs/training_paradigms/text_guided/synapse_grounding_dino_sam2.yaml
+```
+
+### 8. 模型性能分析
+
+```bash
+# FLOPs / 参数量 / FPS
+python profile_model.py --config configs/architectures/networks/general/transunet.yaml
+```
+
+### 9. ONNX 导出
 
 ```bash
 python scripts/export_onnx.py \
@@ -130,7 +233,7 @@ python scripts/export_onnx.py \
     --output model.onnx --verify
 ```
 
-### 4. 预测可视化
+### 10. 预测可视化
 
 ```bash
 python scripts/visualize.py \
@@ -140,7 +243,7 @@ python scripts/visualize.py \
     --output vis_output/
 ```
 
-### 5. Python API
+### 11. Python API
 
 ```python
 from medseg.utils.config import load_config
@@ -165,6 +268,11 @@ print(f"可训练参数量: {trainable / 1e6:.2f}M")
 | [02](docs/tutorial/02_unet_CN.md) | U-Net 详解 | 架构、跳跃连接、U-Net 家族变体 |
 | [03](docs/tutorial/03_data_CN.md) | 数据与预处理 | 格式、切分策略、增强管线 |
 | [04](docs/tutorial/04_training_CN.md) | 训练与评估 | 损失函数、优化器、AMP/DDP、评估 |
+| [05](docs/tutorial/05_encoders_CN.md) | 编码器进阶 | CNN / Transformer / Mamba / RWKV 对比、timm 封装器 |
+| [06](docs/tutorial/06_decoders_CN.md) | 解码器与跳跃连接 | CASCADE / EMCAD / Attention Gate、跳跃连接分类 |
+| [07](docs/tutorial/07_foundation_CN.md) | Foundation 模型 | DPT head、9 大医学模态、微调策略 |
+| [08](docs/tutorial/08_paradigms_CN.md) | 高级训练范式 | 半监督、域适应、知识蒸馏、弱监督 |
+| [09](docs/tutorial/09_deployment_CN.md) | 部署与推理 | ONNX 导出、TTA、集成推理、MLLM Pipeline |
 
 [完整教程索引](docs/tutorial/README_CN.md)
 
@@ -307,6 +415,7 @@ segmentation_tool/
 ├── train_domain_adaptation.py                   # 域适应训练 (18 方法)
 ├── train_distillation.py                        # 知识蒸馏训练 (27 方法)
 ├── train_text_guided.py                         # 文本引导训练 (13 模型)
+├── test_text_guided.py                          # 文本引导推理 (可训练 + pipeline)
 ├── test.py                                      # 推理 / 测试
 ├── profile_model.py                             # FLOPs / 参数量 / FPS 分析
 ├── setup.py                                     # 包安装配置

@@ -20,7 +20,7 @@
 | `biomedparse` | BiomedParse | Zhao et al. | Nature Methods 2024 | [microsoft/BiomedParse](https://github.com/microsoft/BiomedParse) | - |
 | `tpro` | TPRO | Zhang et al. | MICCAI 2023 | [shijun18/TPRO](https://github.com/shijun18/TPRO) | - |
 | `salip` | SaLIP | Aleem et al. | BMVC 2024 | [aleemsidra/SaLIP](https://github.com/aleemsidra/SaLIP) | - |
-| `causal_clipseg` | CausalCLIPSeg | Chen et al. | MICCAI 2024 | [WUTCM-Lab/CausalCLIPSeg](https://github.com/WUTCM-Lab/CausalCLIPSeg) | [synapse_clip.yaml](../../configs/training_paradigms/text_guided/synapse_clip.yaml) |
+| `causal_clipseg` | CausalCLIPSeg | Chen et al. | MICCAI 2024 | [WUTCM-Lab/CausalCLIPSeg](https://github.com/WUTCM-Lab/CausalCLIPSeg) | - |
 | `medclip_sam` | MedCLIP-SAM | Koleilat et al. | MICCAI 2024 | [HealthX-Lab/MedCLIP-SAM](https://github.com/HealthX-Lab/MedCLIP-SAM) | - |
 | `tp_drseg` | TPDRSeg | - | - | - | - |
 | `cxrclipseg` | CXRCLIPSeg | - | - | - | - |
@@ -33,7 +33,7 @@
 model:
   text_guided:
     model_type: TextPromptUNet
-    prompt_mode: clip              # clip | bert | word2vec
+    prompt_mode: clip              # clip | learnable
     embed_dim: 512
     use_external_encoder: true
     class_names:                   # 自然语言描述
@@ -45,7 +45,7 @@ model:
 
 ### 可训练模型配置
 
-**基于 CLIP (TextPromptUNet)：**
+**CLIP 对齐 TextPromptUNet：**
 
 ```yaml
 model:
@@ -59,10 +59,13 @@ model:
       - spleen organ
       - right kidney organ
   encoder:
-    name: timm_vit_clip_base
+    name: timm_vit_clip_base_p32_256   # 原始 CLIP 权重，与文本编码器对齐
     pretrained: true
     in_channels: 3
     img_size: 256
+    params:
+      out_channels: [128, 256, 512]
+      pyramid_scales: 3
 
 data:
   type: synapse
@@ -111,6 +114,24 @@ data:
 
 ```bash
 python train_text_guided.py --config configs/training_paradigms/text_guided/synapse_clip.yaml
+```
+
+### 测试
+
+`test_text_guided.py` 会根据 config 自动识别范式：
+
+```bash
+# 可训练模型（分体架构：encoder + decoder）
+python test_text_guided.py \
+    --config configs/training_paradigms/text_guided/synapse_clip.yaml \
+    --checkpoint output_text_guided/best_model.pth
+
+# 推理-only Pipeline（检测-再分割，无需 --checkpoint）
+python test_text_guided.py \
+    --config configs/training_paradigms/text_guided/synapse_grounding_dino_sam2.yaml
+
+# 保存预测掩码
+python test_text_guided.py --config ... --checkpoint ... --save_pred
 ```
 
 ---
@@ -173,9 +194,9 @@ data:
 
 ```python
 import yaml
-from medseg.mllm import build_pipeline_from_config
+from medseg.inference.mllm import build_pipeline_from_config
 
-cfg = yaml.safe_load(open('configs/training_paradigms/text_guided/synapse_grounding_dino_sam2.yaml'))
+cfg = yaml.safe_load(open('configs/training_paradigms/text_guided/synapse_grounding_dino_sam2.yaml', encoding='utf-8'))
 pipe = build_pipeline_from_config(cfg)
 
 out = pipe(image_rgb_uint8)

@@ -1,8 +1,8 @@
-# Text-Guided Segmentation with CLIP ViT-L/14 (Large)
+# Text-Guided Segmentation with CLIP ViT-L/14 (Large, Aligned)
 # Synapse multi-organ segmentation
 #
-# 使用更大的 CLIP ViT-L/14 视觉塔，配 768 维 CLIP 文本嵌入。
-# 适合追求更强语义对齐效果、显存充足的场景。
+# 使用 CLIP ViT-L/14 原始权重（无 ImageNet fine-tune），
+# 与 CLIP ViT-L/14 文本塔（embed_dim=768）处于同一对齐空间。
 
 
 # text 输入: 在 text_guided.class_names 中写每个类别的自然语言描述
@@ -28,7 +28,7 @@ model:
       - aorta vessel
 
   encoder:
-    name: timm_vit_clip_large            # CLIP ViT-L/14 视觉塔（OpenAI 预训练）
+    name: timm_vit_clip_large_p14_224    # 原始 CLIP ViT-L/14 权重，与文本塔对齐
     pretrained: true
     in_channels: 3
     params:

@@ -1,10 +1,12 @@
-# Text-Guided Segmentation with CLIP Vision-Language Backbone
+# Text-Guided Segmentation with CLIP Vision-Text Aligned Backbone
 # Synapse multi-organ segmentation
 #
-# 与之前用 DINOv3 当视觉塔的方案不同：
-# - 此处视觉塔 (timm_vit_clip_base) 与文本塔 (CLIP text encoder) 同源预训练，
-#   视觉特征与 CLIP 文本嵌入天然位于同一对齐空间，更适合 text-guided 任务。
-# - LAION-2B 预训练，对自然图像语义先验强；医学领域可微调适配。
+# 视觉塔使用原始 CLIP ViT-B/32 权重（无 ImageNet fine-tune），
+# 与文本塔 (openai/clip-vit-base-patch32 CLIPTextModel) 处于同一对齐空间。
+# cross-attention + FiLM 在 decoder 中融合视觉特征与 CLIP 文本嵌入。
+#
+# Visual encoder: vit_base_patch32_clip_256 (original CLIP weights, aligned)
+# Text encoder:   CLIPTextModel (openai/clip-vit-base-patch32, hidden_size=512)
 
 
 # text 输入: 在 text_guided.class_names 中写每个类别的自然语言描述
@@ -16,7 +18,7 @@ model:
   text_guided:
     model_type: TextPromptUNet
     prompt_mode: clip                    # 使用 CLIP text encoder 编码 class_names
-    embed_dim: 512                       # CLIP ViT-B/16 文本嵌入维度
+    embed_dim: 512                       # CLIP text encoder hidden size
     use_external_encoder: true
     # 自然语言描述（CLIP 对完整短语效果更好）
     class_names:
@@ -31,13 +33,13 @@ model:
       - aorta vessel
 
   encoder:
-    name: timm_vit_clip_base             # CLIP ViT-B/16 视觉塔（与文本塔同源对齐）
+    name: timm_vit_clip_base_p32_256   # 原始 CLIP ViT-B/32 权重，与文本塔对齐
     pretrained: true
     in_channels: 3
-    img_size: 256                        # 256/16=16 为 2^4，保证 UNet decoder 上采样链可对齐
+    img_size: 256                        # 256 = 32×8，patch32 输出 8×8 feature map
     params:
-      out_channels: [128, 256, 512, 1024]
-      pyramid_scales: 4
+      out_channels: [128, 256, 512]
+      pyramid_scales: 3                  # 3 级金字塔：8×8 → 4×4 → 2×2
 
 data:
   type: synapse

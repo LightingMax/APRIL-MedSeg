@@ -49,7 +49,7 @@ class WeaklySupervisedDataset(Dataset):
         self.num_classes = num_classes
         
         # Load annotations
-        with open(annotation_file, 'r') as f:
+        with open(annotation_file, 'r', encoding='utf-8') as f:
             self.annotations = json.load(f)
         
         # Validate supervision type
@@ -232,7 +232,7 @@ class CAMDataset(Dataset):
         self.num_classes = num_classes
         
         # Load labels
-        with open(label_file, 'r') as f:
+        with open(label_file, 'r', encoding='utf-8') as f:
             self.labels = json.load(f)
         
         # Get image list

@@ -8,9 +8,9 @@
 # 接入方式与 Qwen2-VL/InternVL + SAM2 完全一致（同一 MLLMGrounder 抽象）：
 #
 #   import yaml, numpy as np
-#   from medseg.mllm import build_pipeline_from_config
+#   from medseg.inference.mllm import build_pipeline_from_config
 #
-#   cfg = yaml.safe_load(open('configs/training_paradigms/text_guided/synapse_grounding_dino_sam2.yaml'))
+#   cfg = yaml.safe_load(open('configs/training_paradigms/text_guided/synapse_grounding_dino_sam2.yaml', encoding='utf-8'))
 #   pipe = build_pipeline_from_config(cfg)
 #   out  = pipe(image_rgb_uint8)            # PipelineOutput(label_map, per_class_masks, ...)
 #
@@ -18,7 +18,7 @@
 #   pip install groundingdino-py
 #   pip install git+https://github.com/facebookresearch/sam2.git
 #
-# 未安装时所有 wrapper 自动 fallback 到 mock 模式。
+# 未安装依赖时会直接 raise，请确认依赖已安装。
 
 # ============================================================
 # Step 1: Grounding DINO 开放词汇 grounding

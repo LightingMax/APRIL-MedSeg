@@ -214,9 +214,24 @@ _register_vit_pyramid("timm_vit_dinov3_huge_plus", "vit_huge_plus_patch16_dinov3
 _register_vit_pyramid("timm_vit_dinov3_7b", "vit_7b_patch16_dinov3.lvd1689m")
 
 # --- CLIP ViT ---
+# WARNING: the _ft_in1k variants have been fine-tuned on ImageNet classification,
+# which BREAKS the original CLIP vision-text alignment space.
+# Use these only for pure classification / non-text-guided tasks.
 _register_vit_pyramid("timm_vit_clip_base", "vit_base_patch16_clip_224.laion2b_ft_in1k")
 _register_vit_pyramid("timm_vit_clip_large", "vit_large_patch14_clip_224.openai_ft_in12k_in1k")
 _register_vit_pyramid("timm_vit_clip_huge", "vit_huge_patch14_clip_224.laion2b_ft_in1k")
+
+# --- CLIP ViT (aligned — original weights, no ImageNet fine-tune) ---
+# These preserve the CLIP contrastive alignment space between visual features
+# and CLIPTextModel embeddings.  Required for text-guided segmentation
+# (TextPromptUNet cross-attention assumes aligned spaces).
+#
+# vit_base_patch32_clip_256: OpenAI ViT-B/32 at native 256×256, embed_dim=512
+#   → matches openai/clip-vit-base-patch32 text encoder (hidden_size=512)
+# vit_large_patch14_clip_224: OpenAI ViT-L/14 at 224×224, embed_dim=768
+#   → matches openai/clip-vit-large-patch14 text encoder (hidden_size=768)
+_register_vit_pyramid("timm_vit_clip_base_p32_256", "vit_base_patch32_clip_256")
+_register_vit_pyramid("timm_vit_clip_large_p14_224", "vit_large_patch14_clip_224")
 
 # --- SAM (Segment Anything) ViT ---
 _register_vit_pyramid("timm_vit_sam_base", "samvit_base_patch16.sa1b")

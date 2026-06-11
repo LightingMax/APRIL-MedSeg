@@ -65,7 +65,7 @@ def load_config(path: str, _visited: Optional[set] = None) -> dict:
         raise ValueError(f"循环继承 / Circular inheritance detected: {path}")
     _visited.add(path)
 
-    with open(path, "r") as f:
+    with open(path, "r", encoding="utf-8") as f:
         cfg = yaml.safe_load(f) or {}
 
     # 处理 _base_ / Handle _base_

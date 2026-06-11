@@ -93,6 +93,7 @@ timm encoder weights are downloaded automatically, no manual management needed.
 ---
 <a id="quick-start"></a>
 ## 🚀 Quick Start
+
 ### 1. Standard Supervised Training
 
 ```bash
@@ -110,14 +111,117 @@ torchrun --nproc_per_node=4 train.py \
     --output_dir output/swinunet --amp
 ```
 
-### 2. Semi-Supervised Training
+### 2. Inference / Testing
 
 ```bash
-python semi_train.py --config configs/training_paradigms/semi_supervision/mean_teacher.yaml \
-    --output_dir output/semi_mt
+# Single model evaluation
+python test.py --config configs/architectures/networks/general/transunet.yaml \
+    --checkpoint output/best_model.pth
+
+# Save prediction results
+python test.py --config configs/architectures/networks/general/transunet.yaml \
+    --checkpoint output/best_model.pth --save_pred --output_dir test_output/
+
+# Multi-checkpoint ensemble (logit averaging)
+python test.py --config configs/architectures/networks/general/transunet.yaml \
+    --checkpoint ckpt_a.pth ckpt_b.pth ckpt_c.pth \
+    --ensemble-weights 0.5 0.3 0.2 \
+    --ensemble-average logit
+
+# Test-Time Augmentation (TTA)
+python test.py --config configs/architectures/networks/general/transunet.yaml \
+    --checkpoint output/best_model.pth \
+    --tta \
+    --tta-augs identity rot90 rot180 rot270 hflip vflip \
+    --tta-merge mean
+
+# TTA + Ensemble combined
+python test.py --config configs/architectures/networks/general/transunet.yaml \
+    --checkpoint ckpt_a.pth ckpt_b.pth \
+    --ensemble-average logit \
+    --tta --tta-merge mean
 ```
 
-### 3. ONNX Export
+### 3. Semi-Supervised Training
+
+```bash
+# Mean Teacher
+python semi_train.py --config configs/training_paradigms/semi_supervision/mean_teacher.yaml \
+    --output_dir output/semi_mt
+
+# CPS (Cross Pseudo Supervision)
+python semi_train.py --config configs/training_paradigms/semi_supervision/cps.yaml \
+    --output_dir output/semi_cps
+```
+
+### 4. Domain Adaptation Training
+
+```bash
+# AdvEnt
+python train_domain_adaptation.py \
+    --config configs/training_paradigms/domain_adaptation/advent.yaml \
+    --output_dir output/da_advent
+
+# TENT (Test-Time Adaptation)
+python train_domain_adaptation.py \
+    --config configs/training_paradigms/domain_adaptation/tent.yaml \
+    --output_dir output/da_tent
+```
+
+### 5. Knowledge Distillation Training
+
+```bash
+python train_distillation.py \
+    --teacher_config configs/training_paradigms/distillation/teacher_large.yaml \
+    --student_config configs/training_paradigms/distillation/student_small.yaml \
+    --distillation_type logit \
+    --temperature 4.0 \
+    --alpha 0.5 \
+    --output_dir output/kd_logit
+```
+
+### 6. Weakly Supervised Training
+
+```bash
+# Box-supervised
+python train_weakly_supervised.py \
+    --config configs/training_paradigms/weak_supervision/box_supervised.yaml \
+    --supervision_type box \
+    --output_dir output/weak_box
+
+# CAM-based
+python train_weakly_supervised.py \
+    --config configs/training_paradigms/weak_supervision/cam.yaml \
+    --supervision_type cam \
+    --output_dir output/weak_cam
+```
+
+### 7. Text-Guided Training
+
+```bash
+# Train
+python train_text_guided.py \
+    --config configs/training_paradigms/text_guided/synapse_clip.yaml \
+    --output_dir output/text_cris
+
+# Test (auto-detects: trainable model vs inference pipeline)
+python test_text_guided.py \
+    --config configs/training_paradigms/text_guided/synapse_clip.yaml \
+    --checkpoint output/text_cris/best_model.pth
+
+# Test inference-only pipeline (no checkpoint needed)
+python test_text_guided.py \
+    --config configs/training_paradigms/text_guided/synapse_grounding_dino_sam2.yaml
+```
+
+### 8. Model Profiling
+
+```bash
+# FLOPs / Params / FPS
+python profile_model.py --config configs/architectures/networks/general/transunet.yaml
+```
+
+### 9. ONNX Export
 
 ```bash
 python scripts/export_onnx.py \
@@ -126,7 +230,7 @@ python scripts/export_onnx.py \
     --output model.onnx --verify
 ```
 
-### 4. Prediction Visualization
+### 10. Prediction Visualization
 
 ```bash
 python scripts/visualize.py \
@@ -136,7 +240,7 @@ python scripts/visualize.py \
     --output vis_output/
 ```
 
-### 5. Python API
+### 11. Python API
 
 ```python
 from medseg.utils.config import load_config
@@ -160,6 +264,11 @@ A step-by-step tutorial series covering deep learning medical image segmentation
 | [02](docs/tutorial/02_unet.md) | U-Net in Detail | Architecture, skip connections, U-Net family variants |
 | [03](docs/tutorial/03_data.md) | Data and Preprocessing | Formats, split strategies, augmentation pipeline |
 | [04](docs/tutorial/04_training.md) | Training and Evaluation | Loss functions, optimizers, AMP/DDP, evaluation |
+| [05](docs/tutorial/05_encoders.md) | Encoder Deep Dive | CNN / Transformer / Mamba / RWKV comparison, timm wrapper |
+| [06](docs/tutorial/06_decoders.md) | Decoders and Skip Connections | CASCADE / EMCAD / Attention Gate, skip taxonomy |
+| [07](docs/tutorial/07_foundation.md) | Foundation Models | DPT head, 9 medical modalities, fine-tuning strategies |
+| [08](docs/tutorial/08_paradigms.md) | Advanced Training Paradigms | Semi-supervised, domain adaptation, distillation, weakly supervised |
+| [09](docs/tutorial/09_deployment.md) | Deployment and Inference | ONNX export, TTA, ensemble, MLLM pipeline |
 
 [Full tutorial index](docs/tutorial/README.md)
 
@@ -301,6 +410,7 @@ segmentation_tool/
 ├── train_domain_adaptation.py                   # Domain adaptation training (18 methods)
 ├── train_distillation.py                        # Knowledge distillation training (27 methods)
 ├── train_text_guided.py                         # Text-guided training (13 models)
+├── test_text_guided.py                          # Text-guided inference (trainable + pipeline)
 ├── test.py                                      # Inference / testing
 ├── profile_model.py                             # FLOPs / params / FPS profiling
 ├── setup.py                                     # Package installation

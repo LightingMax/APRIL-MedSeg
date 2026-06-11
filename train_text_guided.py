@@ -71,8 +71,16 @@ def build_text_guided_model(cfg, device):
     model_cfg = cfg.get('model', {})
     text_cfg = model_cfg.get('text_guided', {})
 
-    # Get encoder channels from config or infer from model
-    encoder_channels = text_cfg.get('encoder_channels', [64, 128, 256, 512])
+    # Get encoder channels from the encoder config (must match actual encoder output)
+    enc_cfg = model_cfg.get('encoder', {})
+    encoder_channels = enc_cfg.get('params', {}).get(
+        'out_channels', text_cfg.get('encoder_channels')
+    )
+    if encoder_channels is None:
+        raise ValueError(
+            "Cannot determine encoder_channels. Set model.encoder.params.out_channels "
+            "(e.g. [128, 256, 512, 1024]) or model.text_guided.encoder_channels."
+        )
     class_names = text_cfg.get('class_names', ['background', 'foreground'])
     prompt_mode = text_cfg.get('prompt_mode', 'learnable')
     embed_dim = text_cfg.get('embed_dim', 512)
@@ -262,7 +270,7 @@ def main():
     args = parser.parse_args()
 
     # Load config
-    with open(args.config, 'r') as f:
+    with open(args.config, 'r', encoding='utf-8') as f:
         cfg = yaml.safe_load(f)
 
     # Set seed

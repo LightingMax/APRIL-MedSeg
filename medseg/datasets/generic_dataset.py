@@ -111,7 +111,7 @@ class GenericDataset(Dataset):
         # Determine which samples belong to this instance
         if file_list is not None and os.path.exists(file_list):
             # Explicit file list mode
-            with open(file_list, 'r') as f:
+            with open(file_list, 'r', encoding='utf-8') as f:
                 listed = set(line.strip() for line in f if line.strip())
             bases = [b for b in all_bases if b in listed]
         elif n_splits > 1:

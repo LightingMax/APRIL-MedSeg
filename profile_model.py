@@ -393,7 +393,7 @@ def profile_single_config(config_path: str, img_size: Optional[int] = None,
                           fps: bool = False, warmup: int = 30,
                           runs: int = 100, batch_size: int = 1) -> Dict[str, Any]:
     """Profile a model from a YAML config file."""
-    with open(config_path, 'r') as f:
+    with open(config_path, 'r', encoding='utf-8') as f:
         cfg = yaml.safe_load(f)
 
     model_cfg = cfg.get('model', cfg)

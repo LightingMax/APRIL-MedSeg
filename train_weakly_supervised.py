@@ -324,7 +324,7 @@ def main():
     args = parser.parse_args()
     
     # Load config
-    with open(args.config, 'r') as f:
+    with open(args.config, 'r', encoding='utf-8') as f:
         cfg = yaml.safe_load(f)
     
     # 可复现性设置 / Reproducibility setup

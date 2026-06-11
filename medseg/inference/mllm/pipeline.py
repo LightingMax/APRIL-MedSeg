@@ -245,7 +245,7 @@ def build_pipeline_from_config(cfg: Dict[str, Any]) -> MLLMGroundingSegPipeline:
     if refine_cfg.get("enabled", False):
         import yaml as _yaml
         from medseg.model_builder import build_model
-        with open(refine_cfg["config_path"]) as _fh:
+        with open(refine_cfg["config_path"], encoding='utf-8') as _fh:
             seg_cfg = _yaml.safe_load(_fh)
         refinement_model = build_model(seg_cfg)
         refinement_model.eval()

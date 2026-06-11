@@ -1,24 +1,22 @@
 __pycache__/
 *.pyc
+*.pyo
 *.pth
+*.ckpt
 .venv/
 *.egg-info/
 runs/
 checkpoints/
+logs/
 
 # Data directories (user datasets)
-data/_test_dummy
-data/CVC-ClinicDB
-data/YourDataset
-data/source
-data/target
-data/target_val
-data/test_dummy
+data/
 
 # IDE & tools
 .claude/
 .idea/
 .vscode/
+.qoder/
 *.swp
 *.swo
 
@@ -26,12 +24,20 @@ data/test_dummy
 .DS_Store
 Thumbs.db
 
-# Output
+# Output & generated
 output/
 *.log
+*.onnx
+*.npz
+*.npy
 smoke_results.txt
+wandb/
+tensorboard/
 
 # ACM template & paper
 _ACM_MM__ul_m/
 _ACM_MM__ul_m.zip
 *.tex
+
+# Test files (root level)
+test_text_guided.py

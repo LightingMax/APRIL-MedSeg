@@ -291,9 +291,9 @@ def main():
     parser.add_argument('--seed', type=int, default=42)
     args = parser.parse_args()
 
-    with open(args.teacher_config, 'r') as f:
+    with open(args.teacher_config, 'r', encoding='utf-8') as f:
         teacher_cfg = yaml.safe_load(f)
-    with open(args.student_config, 'r') as f:
+    with open(args.student_config, 'r', encoding='utf-8') as f:
         student_cfg = yaml.safe_load(f)
 
     # 可复现性设置 / Reproducibility setup

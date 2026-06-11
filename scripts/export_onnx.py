@@ -28,7 +28,7 @@ def export(args):
     import yaml
     from medseg.model_builder import build_model
 
-    with open(args.config) as f:
+    with open(args.config, encoding='utf-8') as f:
         cfg = yaml.safe_load(f)
 
     model_cfg = cfg.get("model", cfg)
