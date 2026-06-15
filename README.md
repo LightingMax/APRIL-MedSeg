@@ -44,6 +44,7 @@
 - [Custom Extensions](#custom-extensions)
 - [Citation & License](#citation--license)
 - [Contact](#contact)
+- [Community](#community)
 ---
 <a id="installation"></a>
 ## 📦 Installation
@@ -718,12 +719,19 @@ data:
 ### Included Datasets (26)
 
 **Skin**: ISIC 2016/2017/2018, PH2
+
 **Polyp**: CVC-ClinicDB, CVC-ColonDB, Kvasir-SEG
+
 **Pathology**: GlaS, PanNuke, MoNuSeg
+
 **Retinal**: DRIVE, STARE, CHASE_DB1, HRF, ARIA, RITE, REFUGE, Drishti-GS
+
 **Chest**: Montgomery+Shenzhen CXR, QaTa-COV19, COVID CT Seg
+
 **Ultrasound**: BUSI
+
 **Multi-organ**: Synapse, ACDC
+
 **CT**: MosMedData+
 
 ---
@@ -916,7 +924,9 @@ For questions, collaborations, or bug reports, feel free to reach out:
 
 - **Email**: [juntaojiang@zju.edu.cn](mailto:juntaojiang@zju.edu.cn)
 
-### Community
+---
+<a id="community"></a>
+## 🤝 Community
 
 <div align="center">
 <table>
