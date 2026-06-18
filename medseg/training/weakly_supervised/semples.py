@@ -215,6 +215,10 @@ class SemPLeSLoss(nn.Module):
                 BCE is computed on GAP(cam_learn).
             labeled_loss: optional dense supervised loss to add.
         """
+        if class_image_emb.dim() != 3:
+            raise ValueError(
+                f"class_image_emb must be (B,C,D); got {tuple(class_image_emb.shape)}"
+            )
         if image_labels.dim() != 2:
             raise ValueError(
                 f"image_labels must be (B,C); got {tuple(image_labels.shape)}"

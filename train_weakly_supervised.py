@@ -32,6 +32,7 @@ import yaml
 import numpy as np
 import torch
 import torch.nn as nn
+import torch.nn.functional as F
 from torch.utils.data import DataLoader
 from torch.optim import AdamW
 from torch.optim.lr_scheduler import CosineAnnealingLR
@@ -67,9 +68,10 @@ class WeaklySupervisedDataset:
     - Images with only image-level labels
     """
     
-    def __init__(self, dataset, supervision_type='box'):
+    def __init__(self, dataset, supervision_type='box', num_classes=None):
         self.dataset = dataset
         self.supervision_type = supervision_type
+        self.num_classes = num_classes
     
     def __len__(self):
         return len(self.dataset)
@@ -117,7 +119,7 @@ class WeaklySupervisedDataset:
         
         # Generate from segmentation mask
         label = item['label']
-        num_classes = label.max() + 1
+        num_classes = self.num_classes if self.num_classes is not None else label.max() + 1
         image_labels = torch.zeros(num_classes)
         
         for cls in range(num_classes):
@@ -125,6 +127,29 @@ class WeaklySupervisedDataset:
                 image_labels[cls] = 1.0
         
         return image_labels
+
+
+def weak_collate_fn(batch):
+    """Collate function that handles variable-length weak annotations.
+
+    Keeps boxes/points/scribbles as lists of per-sample tensors so that
+    loss functions expecting list format (e.g. BoxSupervisedLoss) work correctly.
+    """
+    elem = batch[0]
+    result = {}
+    for key in elem:
+        if key in ('boxes', 'points', 'scribbles', 'box_classes', 'point_classes', 'scribble_classes'):
+            # Keep as list of per-sample tensors
+            result[key] = [b[key] for b in batch if key in b]
+        elif key == 'case_name':
+            result[key] = [b[key] for b in batch]
+        else:
+            vals = [b[key] for b in batch if key in b]
+            if vals and isinstance(vals[0], torch.Tensor):
+                result[key] = torch.stack(vals, 0)
+            else:
+                result[key] = vals
+    return result
 
 
 def build_loss(supervision_type, cfg):
@@ -186,7 +211,8 @@ def train_one_epoch_weakly(
     device,
     epoch,
     supervision_type='box',
-    cam_generator=None
+    cam_generator=None,
+    cfg=None
 ):
     """Train with weak supervision for one epoch."""
     model.train()
@@ -201,19 +227,25 @@ def train_one_epoch_weakly(
         predictions = model(images)
         
         # Compute weakly supervised loss
-        if supervision_type == 'box':
+        if supervision_type in ('box', 'box_supervised', 'boxinst'):
             boxes = batch.get('boxes', None)
+            box_classes = batch.get('box_classes', None)
             image_labels = batch.get('image_labels', None)
             target = batch.get('label', None)
             
-            if boxes is not None:
-                boxes = boxes.to(device)
             if image_labels is not None:
                 image_labels = image_labels.to(device)
             if target is not None:
                 target = target.to(device)
             
-            loss = criterion(predictions, boxes, image_labels, target)
+            # Dispatch based on actual loss type
+            loss_name = cfg.get('training', {}).get('loss', {}).get('name', '')
+            if loss_name == 'boxinst':
+                # BoxInstLoss: (predictions, images, boxes, labeled_loss)
+                loss = criterion(predictions, batch['image'].to(device), boxes)
+            else:
+                # BoxSupervisedLoss: (predictions, boxes, box_classes, image_labels, target)
+                loss = criterion(predictions, boxes, box_classes, image_labels, target)
             
         elif supervision_type == 'cam':
             if cam_generator is not None:
@@ -244,21 +276,143 @@ def train_one_epoch_weakly(
 
         else:
             # Generic dispatch for losses chosen via training.loss.name from
-            # LOSS_REGISTRY. We hand the loss every plausible field from the
-            # batch as a kwarg; the loss's forward() is expected to ignore
-            # what it does not need via **kwargs.
+            # LOSS_REGISTRY. Different losses have different forward signatures,
+            # so we handle each explicitly.
+            loss_name = cfg.get('training', {}).get('loss', {}).get('name', '')
             ctx = {}
             for k, v in batch.items():
-                if k == 'image':
+                if k == 'case_name':
                     continue
                 if isinstance(v, torch.Tensor):
                     ctx[k] = v.to(device)
-                else:
-                    ctx[k] = v
-            target = ctx.pop('label', None)
+
             try:
-                loss = criterion(predictions, target, **ctx) if target is not None \
-                       else criterion(predictions, **ctx)
+                if loss_name == 'affinity_loss':
+                    features = ctx.pop('features', predictions)
+                    loss = criterion(predictions, features)
+                elif loss_name == 'gated_crf':
+                    loss = criterion(predictions, batch['image'].to(device))
+                elif loss_name == 'bacon':
+                    features = ctx.pop('features', predictions)
+                    cam_logits = ctx.pop('cam_logits', predictions)
+                    image_labels = ctx.pop('image_labels', None)
+                    loss = criterion(features, cam_logits, image_labels)
+                elif loss_name == 'dupl':
+                    seg_a = predictions
+                    seg_b = predictions
+                    cam_a = ctx.pop('cam_a', predictions)
+                    cam_b = ctx.pop('cam_b', predictions)
+                    image_labels = ctx.pop('image_labels', None)
+                    loss = criterion(seg_a, seg_b, cam_a, cam_b, image_labels)
+                elif loss_name == 'mars':
+                    cam_orig = ctx.pop('cam_orig', predictions)
+                    cam_react = ctx.pop('cam_react', predictions)
+                    erase_mask = ctx.pop('erase_mask', torch.zeros_like(predictions[:, :1]))
+                    image_labels = ctx.pop('image_labels', None)
+                    loss = criterion(cam_orig, cam_react, erase_mask, image_labels)
+                elif loss_name == 'lpcam':
+                    features = ctx.pop('features', predictions)
+                    image_labels = ctx.pop('image_labels', None)
+                    loss = criterion(features, image_labels)
+                elif loss_name == 'tree_energy':
+                    loss = criterion(predictions, batch['image'].to(device))
+                elif loss_name == 'cam_loss':
+                    image_labels = ctx.pop('image_labels', None)
+                    target = ctx.pop('label', None)
+                    if cam_generator is not None:
+                        cams = cam_generator.generate_batch_cam(images, image_labels)
+                    else:
+                        cams = predictions
+                    loss = criterion(predictions, cams, image_labels, target)
+                elif loss_name == 'mil_loss':
+                    image_labels = ctx.pop('image_labels', None)
+                    loss = criterion(predictions, image_labels)
+                elif loss_name == 'scribble_sup':
+                    scribbles_list = batch.get('scribbles', None)
+                    images_t = batch['image'].to(device)
+                    if scribbles_list is not None and isinstance(scribbles_list, list):
+                        # Convert scribble coordinates to a mask
+                        B_s, _, H_s, W_s = predictions.shape
+                        scribble_mask = torch.full((B_s, H_s, W_s), -1, dtype=torch.long, device=device)
+                        for b_idx, scrib in enumerate(scribbles_list):
+                            if isinstance(scrib, torch.Tensor) and scrib.numel() > 0 and scrib.dim() == 2:
+                                x_coords = (scrib[:, 0].clamp(0, W_s - 1).long())
+                                y_coords = (scrib[:, 1].clamp(0, H_s - 1).long())
+                                scribble_mask[b_idx, y_coords, x_coords] = 0
+                    else:
+                        scribble_mask = torch.zeros(predictions.shape[0], predictions.shape[2], predictions.shape[3], dtype=torch.long, device=device)
+                    loss = criterion(predictions, scribble_mask, images_t)
+                elif loss_name == 'point_supervised':
+                    points_list = batch.get('points', None)
+                    point_classes_list = batch.get('point_classes', None)
+                    images_t = batch['image'].to(device)
+                    if points_list is not None and isinstance(points_list, list) and len(points_list) >= 1:
+                        # Convert point coordinates to a mask
+                        B_p, _, H_p, W_p = predictions.shape
+                        point_mask = torch.full((B_p, H_p, W_p), -1, dtype=torch.long, device=device)
+                        for b_idx, pts in enumerate(points_list):
+                            if isinstance(pts, torch.Tensor) and pts.numel() > 0 and pts.dim() == 2:
+                                x_coords = (pts[:, 0].clamp(0, W_p - 1).long())
+                                y_coords = (pts[:, 1].clamp(0, H_p - 1).long())
+                                if point_classes_list is not None and isinstance(point_classes_list, list) and b_idx < len(point_classes_list):
+                                    cls = point_classes_list[b_idx].long().to(device)
+                                else:
+                                    cls = torch.zeros(pts.shape[0], dtype=torch.long, device=device)
+                                point_mask[b_idx, y_coords, x_coords] = cls
+                    else:
+                        point_mask = torch.zeros(predictions.shape[0], predictions.shape[2], predictions.shape[3], dtype=torch.long, device=device)
+                    loss = criterion(predictions, point_mask, images_t)
+                elif loss_name in ('more', 'psdpm', 'recam', 'semples', 'toco'):
+                    image_labels = ctx.pop('image_labels', None)
+                    if cam_generator is not None:
+                        features, cam_logits = cam_generator.extract_features_and_cam(
+                            batch['image'].to(device), image_labels, upsample=False
+                        )
+                    else:
+                        features = predictions
+                        cam_logits = predictions
+
+                    if loss_name == 'more':
+                        B_f, D_f, H_f, W_f = features.shape
+                        N = H_f * W_f
+                        cam_flat = cam_logits.view(B_f, cam_logits.shape[1], -1)
+                        cam_sum = cam_flat.sum(dim=2, keepdim=True).clamp_min(1e-6)
+                        class_attn = cam_flat / cam_sum
+                        patch_tokens = features.permute(0, 2, 3, 1).reshape(B_f, N, D_f)
+                        loss = criterion(class_attn, patch_tokens, image_labels, cam_logits=cam_logits)
+                    elif loss_name == 'psdpm':
+                        pred_interp = F.interpolate(predictions, size=cam_logits.shape[-2:], mode='bilinear', align_corners=False)
+                        bg_channel = torch.zeros_like(pred_interp[:, :1])
+                        pred_with_bg = torch.cat([bg_channel, pred_interp], dim=1)
+                        loss = criterion(pred_with_bg, features, cam_logits, image_labels)
+                    elif loss_name == 'recam':
+                        loss = criterion(cam_logits, features, image_labels)
+                    elif loss_name == 'semples':
+                        B_f, D_f, H_f, W_f = features.shape
+                        C_lab = image_labels.shape[1]
+                        cam_norm = torch.sigmoid(cam_logits)
+                        class_image_emb = torch.einsum('bchw,bdhw->bcd', cam_norm, features)
+                        denom = cam_norm.sum(dim=(2, 3)).unsqueeze(-1).clamp_min(1e-6)
+                        class_image_emb = class_image_emb / denom
+                        cls_prompts = class_image_emb.mean(dim=0)
+                        cam_learn = cam_logits
+                        cam_teacher = cam_logits.detach()
+                        bg_prompts = torch.randn_like(cls_prompts)
+                        loss = criterion(class_image_emb, cls_prompts, cam_learn, cam_teacher, image_labels, bg_prompts=bg_prompts)
+                    elif loss_name == 'toco':
+                        B_f, D_f, H_f, W_f = features.shape
+                        N = H_f * W_f
+                        C_tok = cam_logits.shape[1]
+                        patch_tokens = features.permute(0, 2, 3, 1).reshape(B_f, N, D_f)
+                        cam_tokens = cam_logits.view(B_f, C_tok, N)
+                        cls_token_full = features.mean(dim=(2, 3))
+                        cam_mask = (cam_logits > 0.5).float()
+                        cam_mask_exp = cam_mask.sum(dim=1, keepdim=True).clamp_min(1e-6)
+                        cls_token_masked = (features * cam_mask_exp).mean(dim=(2, 3))
+                        loss = criterion(patch_tokens, cam_tokens, cls_token_full, cls_token_masked, image_labels)
+                else:
+                    target = ctx.pop('label', None)
+                    loss = criterion(predictions, target, **ctx) if target is not None else criterion(predictions, **ctx)
             except TypeError as e:
                 raise TypeError(
                     f"Loss {type(criterion).__name__} forward() rejected the "
@@ -287,22 +441,29 @@ def validate_weakly(model, dataloader, num_classes, device):
     """Validate the model."""
     model.eval()
     all_dice = []
-    
+    has_labels = True
+
     for batch in dataloader:
         images = batch['image'].to(device)
-        labels = batch['label'].numpy()
-        
+        labels = batch.get('label', None)
+        if labels is None:
+            has_labels = False
+            continue
+        labels = labels.numpy()
+
         outputs = model(images)
         if isinstance(outputs, (list, tuple)):
             outputs = outputs[0]
         preds = outputs.argmax(dim=1).cpu().numpy()
-        
+
         for pred, target in zip(preds, labels):
             metrics = compute_metrics(pred, target, num_classes)
             dice_vals = list(metrics['dice'].values())
             if dice_vals:
                 all_dice.append(np.mean(dice_vals))
-    
+
+    if not has_labels:
+        return 0.0
     return np.mean(all_dice) if all_dice else 0.0
 
 
@@ -346,7 +507,8 @@ def main():
     from train import build_dataset
     data_cfg = cfg.get('data', {})
     train_dataset = build_dataset(data_cfg, 'train')
-    train_dataset = WeaklySupervisedDataset(train_dataset, args.supervision_type)
+    num_classes = cfg.get('model', {}).get('num_classes', 9)
+    train_dataset = WeaklySupervisedDataset(train_dataset, args.supervision_type, num_classes)
     
     train_loader = DataLoader(
         train_dataset,
@@ -355,6 +517,7 @@ def main():
         num_workers=cfg.get('training', {}).get('num_workers', 4),
         pin_memory=True,
         drop_last=True,
+        collate_fn=weak_collate_fn,
     )
     logger.info(f"Train dataset: {len(train_dataset)} samples ({args.supervision_type} supervision)")
     
@@ -368,6 +531,7 @@ def main():
             shuffle=False,
             num_workers=cfg.get('training', {}).get('num_workers', 4),
             pin_memory=True,
+            collate_fn=weak_collate_fn,
         )
         logger.info(f"Val dataset: {len(val_dataset)} samples")
     
@@ -403,8 +567,25 @@ def main():
     
     # Build CAM generator if needed
     cam_generator = None
-    if args.supervision_type == 'cam':
-        cam_generator = CAMGenerator(model, target_layer='encoder.layer4')
+    needs_cam_gen = args.supervision_type == 'cam'
+    loss_name_cfg = cfg.get('training', {}).get('loss', {}).get('name', '')
+    if loss_name_cfg in ('more', 'psdpm', 'recam', 'semples', 'toco'):
+        needs_cam_gen = True
+    if needs_cam_gen:
+        possible_layers = ['encoder.model.layer4', 'encoder.layer4', 'model.layer4', 'layer4']
+        target_layer = None
+        for layer in possible_layers:
+            if any(layer == n for n, _ in model.named_modules()):
+                target_layer = layer
+                break
+        if target_layer is None:
+            for name, _ in model.named_modules():
+                if 'layer4' in name or 'stage4' in name:
+                    target_layer = name
+        if target_layer is None:
+            raise ValueError("Could not find a suitable target_layer for CAM.")
+        cam_generator = CAMGenerator(model, target_layer=target_layer)
+        logger.info(f"CAMGenerator using target_layer: {target_layer}")
     
     # Training loop
     logger.info(f"Starting weakly supervised training ({args.supervision_type}) for {total_epochs} epochs")
@@ -419,7 +600,8 @@ def main():
             device,
             epoch,
             args.supervision_type,
-            cam_generator
+            cam_generator,
+            cfg
         )
         
         # Update LR

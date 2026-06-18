@@ -128,6 +128,12 @@ class ReCAMLoss(nn.Module):
         Returns:
             Scalar loss = cls_weight * BCE + lambda * per_class_CE.
         """
+        if features.dim() != 4 or cam_logits.dim() != 4:
+            raise ValueError(
+                f"features and cam_logits must be 4-D; got features={tuple(features.shape)}, "
+                f"cam_logits={tuple(cam_logits.shape)}"
+            )
+
         B, C_fg, H, W = cam_logits.shape
 
         # Interpolate features to match cam_logits spatial size if needed

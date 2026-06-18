@@ -87,11 +87,20 @@ class RDrop(BaseSemiMethod):
     def build(self) -> None:
         if not _has_dropout(self.model):
             raise ValueError(
-                "RDrop requires at least one Dropout/Dropout2d/Dropout3d "
-                "module with p>0 in the model — two forward passes would "
-                "otherwise be deterministic and the regulariser would "
-                "collapse to zero.  Enable dropout in your model config "
-                "(e.g. add a Dropout2d in the decoder/head)."
+                "R-Drop 需要模型中存在至少一个有效的 Dropout 层 (p > 0)，"
+                "但当前模型中未检测到任何 Dropout/Dropout2d/Dropout3d 模块。\n\n"
+                "【原因】R-Drop 的核心机制是：对同一输入做两次随机 forward pass，"
+                "利用 Dropout 的随机掩码使两次输出 p1、p2 产生差异，"
+                "再用对称 KL 散度 KL(p1‖p2) 作为一致性正则项。"
+                "如果模型没有 Dropout，两次 forward 结果完全相同，"
+                "KL = 0，正则项失效，R-Drop 退化为普通监督学习，"
+                "对无标签数据没有任何约束。\n\n"
+                "【修复方法】在 YAML 的 decoder.params 中添加 dropout 参数，例如：\n"
+                "  decoder:\n"
+                "    name: bilinear\n"
+                "    params:\n"
+                "      dropout: 0.3\n"
+                "或者换用内置 Dropout 的解码器（如 deconv、unetpp）。"
             )
 
     @staticmethod

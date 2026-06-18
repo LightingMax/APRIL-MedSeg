@@ -15,7 +15,7 @@ class BilinearDecoder(nn.Module):
         UNet decoder using bilinear upsampling instead of transposed convolutions."""
 
     def __init__(self, encoder_channels: List[int], bottleneck_channels: int,
-                 skip_connection=None, **kwargs):
+                 skip_connection=None, dropout: float = 0.0, **kwargs):
         super().__init__()
         self.skip_connection = skip_connection
         skip_channels = list(reversed(encoder_channels))
@@ -28,14 +28,17 @@ class BilinearDecoder(nn.Module):
             else:
                 merged_ch = in_ch + skip_ch
             out_ch = skip_ch
-            self.up_convs.append(nn.Sequential(
+            layers = [
                 nn.Conv2d(merged_ch, out_ch, 3, padding=1, bias=False),
                 nn.BatchNorm2d(out_ch),
                 nn.ReLU(inplace=True),
                 nn.Conv2d(out_ch, out_ch, 3, padding=1, bias=False),
                 nn.BatchNorm2d(out_ch),
                 nn.ReLU(inplace=True),
-            ))
+            ]
+            if dropout > 0.0:
+                layers.append(nn.Dropout2d(p=dropout))
+            self.up_convs.append(nn.Sequential(*layers))
             in_ch = out_ch
         self._out_channels = skip_channels[-1] if skip_channels else bottleneck_channels
 

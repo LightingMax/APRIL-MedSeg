@@ -195,10 +195,16 @@ class MoReLoss(nn.Module):
                 rows (summing each class' attention mass).
             labeled_loss: optional dense supervised loss to add.
         """
+        if class_attn.dim() != 3 or patch_tokens.dim() != 3:
+            raise ValueError(
+                f"class_attn must be (B,C,N) and patch_tokens (B,N,D); "
+                f"got class_attn={tuple(class_attn.shape)}, "
+                f"patch_tokens={tuple(patch_tokens.shape)}"
+            )
         if image_labels.dim() != 2 or image_labels.shape[1] != class_attn.shape[1]:
             raise ValueError(
-                f"image_labels shape {tuple(image_labels.shape)} must be "
-                f"(B, C={class_attn.shape[1]})"
+                f"image_labels shape {tuple(image_labels.shape)} incompatible "
+                f"with class_attn class dim {class_attn.shape[1]}"
             )
 
         # (1) Classification BCE.

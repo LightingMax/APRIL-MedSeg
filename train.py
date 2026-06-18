@@ -90,6 +90,18 @@ def build_dataset(data_cfg, split='train', cfg=None):
             transform=transform,
             img_size=img_size,
         )
+    elif dataset_type == 'weak':
+        from medseg.datasets.weakly_supervised_datasets import WeaklySupervisedDataset
+        # Use explicit image_dir if set, otherwise fall back to split_dir/root_dir
+        img_dir = data_cfg.get('image_dir') or data_cfg.get(f'{split}_dir', data_cfg.get('root_dir'))
+        return WeaklySupervisedDataset(
+            image_dir=img_dir,
+            annotation_file=data_cfg.get('annotation_file'),
+            supervision_type=data_cfg.get('supervision_type', 'box'),
+            transform=transform,
+            img_size=img_size,
+            num_classes=data_cfg.get('num_classes', cfg.get('model', {}).get('num_classes', 9) if cfg else 9),
+        )
     elif dataset_type in ('qata_covid19', 'mosmed_plus'):
         # QaTa-COV19 / MosMedData+ (LViT enriched): 带 per-image 文本标注
         # QaTa-COV19 / MosMedData+ (LViT enriched): with per-image text annotations

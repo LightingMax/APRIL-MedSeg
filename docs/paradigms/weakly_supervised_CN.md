@@ -63,7 +63,9 @@
 
 ### 边界框 (`box`)
 
-归一化 `[x1, y1, x2, y2]` 格式的边界框（0–1 范围）。
+每张图像可有多个边界框。支持**可变长度**（无填充或截断）。支持两种标注格式：
+
+**格式 1：简单格式（所有框共享同一类别）**
 
 ```json
 [
@@ -74,11 +76,31 @@
 ]
 ```
 
+**格式 2：逐框类别（实例级标注）**
+
+```json
+[
+  {
+    "image": "img_0001.png",
+    "boxes": [
+      {"box": [0.1, 0.2, 0.8, 0.9], "class": 1},
+      {"box": [0.3, 0.4, 0.6, 0.7], "class": 3}
+    ]
+  }
+]
+```
+
+所有坐标归一化到 `[0, 1]` 范围，格式为 `[x1, y1, x2, y2]`。数据集自动缩放到图像尺寸。
+
+**实例到语义转换：** 逐框类别自动转换为图像级多标签。例如，图像有框类别 `[1, 3, 1]`，则 `image_labels` 为 `[0, 1, 0, 1, 0, 0, 0, 0, 0]`（类别 1 和 3 存在）。
+
 **使用方法：** `box_supervised`、`boxinst`
 
 ### 点 (`point`)
 
-点击点以 `[x, y, class_id]` 元组表示（归一化坐标）。
+每张图像可有多个点击点。支持**可变长度**。支持两种标注格式：
+
+**格式 1：简单元组含类别 ID**
 
 ```json
 [
@@ -89,11 +111,32 @@
 ]
 ```
 
+**格式 2：逐点类别（实例级标注）**
+
+```json
+[
+  {
+    "image": "img_0001.png",
+    "points": [
+      {"point": [0.5, 0.3], "class": 1},
+      {"point": [0.2, 0.7], "class": 0},
+      {"point": [0.8, 0.6], "class": 2}
+    ]
+  }
+]
+```
+
+坐标为归一化 `[x, y]`，范围 `[0, 1]`。数据集自动缩放到图像尺寸。
+
+**实例到语义转换：** 逐点类别自动转换为图像级多标签，与框转换相同。
+
 **使用方法：** `point`、`click_supervision`、`iseg`
 
 ### 涂鸦 (`scribble`)
 
-涂鸦线以 `[x, y]` 坐标对表示（归一化坐标）。
+每张图像可有多个涂鸦。支持**可变长度**。支持两种标注格式：
+
+**格式 1：简单格式（所有涂鸦共享同一类别）**
 
 ```json
 [
@@ -104,7 +147,36 @@
 ]
 ```
 
+**格式 2：逐涂鸦类别（实例级标注）**
+
+```json
+[
+  {
+    "image": "img_0001.png",
+    "scribbles": [
+      {"scribble": [[0.1, 0.2], [0.15, 0.25]], "class": 1},
+      {"scribble": [[0.5, 0.5], [0.55, 0.6]], "class": 3}
+    ]
+  }
+]
+```
+
+坐标为归一化 `[x, y]`，范围 `[0, 1]`。每个涂鸦是形成一笔划的坐标对列表。
+
+**实例到语义转换：** 逐涂鸦类别自动转换为图像级多标签，与框/点转换相同。
+
 **使用方法：** `scribble_sup`
+
+### 可变长度支持
+
+所有空间标注类型（框、点、涂鸦）支持**每张图像可变数量的实例**。`train_weakly_supervised.py` 中的自定义 collate 函数 `weak_supervision_collate()` 对这些字段返回张量列表而非堆叠张量，避免填充或截断。
+
+```python
+# 在 train_weakly_supervised.py 中
+def weak_supervision_collate(batch):
+    # boxes, box_classes, points, point_classes, scribbles 保持为列表
+    # 其他字段正常堆叠
+```
 
 ### 预计算 CAM（可选）
 
@@ -120,10 +192,23 @@ data:
 | 类型 | 标注方式 | 数据集类 | 方法 |
 |------|----------|----------|------|
 | 图像级 | 类别标签 | `ImageLabelDataset` | cam、mil、seam、puzzle_cam、advcam、mctformer + 12 个扩展方法 |
-| 框 | 边界框 | `BoxSupervisedDataset` | box_supervised、boxinst |
-| 点 | 点击点 | `WeaklySupervisedDataset(point)` | point、click_supervision、iseg |
-| 涂鸦 | 涂鸦线 | `WeaklySupervisedDataset(scribble)` | scribble_sup |
+| 框 | 边界框（可变长度，逐框类别） | `BoxSupervisedDataset` | box_supervised、boxinst |
+| 点 | 点击点（可变长度，逐点类别） | `WeaklySupervisedDataset(point)` | point、click_supervision、iseg |
+| 涂鸦 | 涂鸦线（可变长度，逐涂鸦类别） | `WeaklySupervisedDataset(scribble)` | scribble_sup |
 | 混合 | 多种类型 | — | sam_guided_weak、eps |
+
+### 需要标注文件的方法
+
+以下方法需要在 YAML 中配置特定的标注文件：
+
+| 方法 | 标注文件 | YAML 键 |
+|------|----------|---------|
+| `box_supervised` | boxes.json | `data.annotation_file` |
+| `boxinst` | boxes.json | `data.annotation_file` |
+| `point` | points.json | `data.annotation_file` |
+| `scribble_sup` | scribbles.json | `data.annotation_file` |
+| `gated_crf` | weak_labels.json | `data.label_file` |
+| `tree_energy` | sparse_labels.json | `data.label_file` |
 
 ## 配置示例
 

@@ -90,15 +90,16 @@ def build_labeled_dataset(data_cfg, split='train'):
             img_size=img_size,
         )
     elif dataset_type in ('image_mask', 'binary'):
+        root_dir = data_cfg.get('root_dir') or data_cfg.get('labeled_dir')
         return GenericDataset(
-            root_dir=data_cfg.get('root_dir'),
+            root_dir=root_dir,
             split=split,
             transform=transform,
             img_size=img_size,
             **{k: v for k, v in data_cfg.items()
                if k in ('train_ratio', 'val_ratio', 'random_state',
                          'n_splits', 'fold_idx', 'kfold_mode', 'file_list',
-                         'img_suffix', 'mask_suffix')},
+                         'img_suffix', 'mask_suffix', 'image_dir', 'mask_dir')},
         )
     else:
         raise ValueError(f"Unknown dataset type: {dataset_type}")

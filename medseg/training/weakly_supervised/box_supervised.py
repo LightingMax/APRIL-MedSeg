@@ -52,7 +52,8 @@ class BoxSupervisedLoss(nn.Module):
     def forward(
         self,
         predictions: torch.Tensor,
-        boxes: Optional[torch.Tensor] = None,
+        boxes: Optional[list] = None,
+        box_classes: Optional[list] = None,
         image_labels: Optional[torch.Tensor] = None,
         target: Optional[torch.Tensor] = None,
     ) -> torch.Tensor:
@@ -63,7 +64,7 @@ class BoxSupervisedLoss(nn.Module):
 
         if boxes is not None:
             pseudo_labels = self._generate_pseudo_labels_from_boxes(
-                predictions, boxes, image_labels
+                predictions, boxes, box_classes, image_labels
             )
             box_loss = self.base_loss_fn(predictions, pseudo_labels)
             outside_penalty = self._compute_outside_penalty(predictions, boxes)
@@ -81,26 +82,41 @@ class BoxSupervisedLoss(nn.Module):
             x1, y1, x2, y2 = box.int().tolist()
         return x1, y1, x2, y2
 
-    def _generate_pseudo_labels_from_boxes(self, predictions, boxes, image_labels):
+    def _generate_pseudo_labels_from_boxes(self, predictions, boxes, box_classes, image_labels):
         B, C, H, W = predictions.shape
         pseudo_labels = torch.zeros(B, H, W, dtype=torch.long, device=predictions.device)
 
         for b in range(B):
+            box_list = boxes[b]  # (N_b, 4)
+            cls_list = box_classes[b] if box_classes is not None else None  # (N_b,)
+
             if image_labels is not None:
                 present_classes = torch.where(image_labels[b] > 0)[0]
             else:
                 present_classes = predictions[b].argmax(dim=0).unique()
 
-            for box in boxes[b]:
-                x1, y1, x2, y2 = self._parse_box(box)
-                x1, y1 = max(0, x1), max(0, y1)
-                x2, y2 = min(W, x2), min(H, y2)
+            if cls_list is not None and cls_list.numel() > 0:
+                # Use per-box class info
+                for i_box in range(box_list.shape[0]):
+                    box = box_list[i_box]
+                    cls = cls_list[i_box].item()
+                    x1, y1, x2, y2 = self._parse_box(box)
+                    x1, y1 = max(0, x1), max(0, y1)
+                    x2, y2 = min(W, x2), min(H, y2)
+                    pseudo_labels[b, y1:y2, x1:x2] = cls
+            else:
+                # Fallback: no per-box class, use image_labels or prediction
+                for i_box in range(box_list.shape[0]):
+                    box = box_list[i_box]
+                    x1, y1, x2, y2 = self._parse_box(box)
+                    x1, y1 = max(0, x1), max(0, y1)
+                    x2, y2 = min(W, x2), min(H, y2)
 
-                if len(present_classes) == 1:
-                    pseudo_labels[b, y1:y2, x1:x2] = present_classes[0]
-                else:
-                    box_pred = predictions[b, :, y1:y2, x1:x2]
-                    pseudo_labels[b, y1:y2, x1:x2] = box_pred.mean(dim=[1, 2]).argmax()
+                    if len(present_classes) == 1:
+                        pseudo_labels[b, y1:y2, x1:x2] = present_classes[0]
+                    else:
+                        box_pred = predictions[b, :, y1:y2, x1:x2]
+                        pseudo_labels[b, y1:y2, x1:x2] = box_pred.mean(dim=[1, 2]).argmax()
 
         return pseudo_labels
 
@@ -109,7 +125,9 @@ class BoxSupervisedLoss(nn.Module):
         box_mask = torch.zeros(B, H, W, device=predictions.device)
 
         for b in range(B):
-            for box in boxes[b]:
+            box_list = boxes[b]  # (N_b, 4)
+            for i_box in range(box_list.shape[0]):
+                box = box_list[i_box]
                 x1, y1, x2, y2 = self._parse_box(box)
                 x1, y1 = max(0, x1), max(0, y1)
                 x2, y2 = min(W, x2), min(H, y2)

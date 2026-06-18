@@ -172,9 +172,9 @@ class PSDPMLoss(nn.Module):
         C_fg = cam_logits.shape[1]
         if predictions_r.shape[1] < self.fg_channel_start + C_fg:
             raise ValueError(
-                f"predictions has {predictions_r.shape[1]} channels but "
-                f"fg_channel_start={self.fg_channel_start} + C_fg={C_fg} "
-                f"would over-run."
+                f"predictions has {predictions_r.shape[1]} channels but needs "
+                f"{self.fg_channel_start + C_fg} (fg_channel_start={self.fg_channel_start} "
+                f"+ C_fg={C_fg})"
             )
 
         # (1) Multi-label classification BCE.

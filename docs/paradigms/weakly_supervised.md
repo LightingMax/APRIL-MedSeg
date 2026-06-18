@@ -63,7 +63,9 @@ Only the image-level class presence is required — no spatial annotation.
 
 ### Bounding Box (`box`)
 
-Bounding boxes in normalised `[x1, y1, x2, y2]` format (0–1 range).
+Each image can have multiple boxes. Boxes support **variable-length** per image (no padding or truncation). Two annotation formats are supported:
+
+**Format 1: Simple (all boxes share same class)**
 
 ```json
 [
@@ -74,11 +76,31 @@ Bounding boxes in normalised `[x1, y1, x2, y2]` format (0–1 range).
 ]
 ```
 
+**Format 2: Per-box class (instance-level annotations)**
+
+```json
+[
+  {
+    "image": "img_0001.png",
+    "boxes": [
+      {"box": [0.1, 0.2, 0.8, 0.9], "class": 1},
+      {"box": [0.3, 0.4, 0.6, 0.7], "class": 3}
+    ]
+  }
+]
+```
+
+All coordinates are normalised to `[0, 1]` range as `[x1, y1, x2, y2]`. The dataset automatically scales them to image size.
+
+**Instance-to-semantic conversion:** Per-box classes are automatically converted to image-level multi-labels. For example, if an image has boxes with classes `[1, 3, 1]`, the resulting `image_labels` will be `[0, 1, 0, 1, 0, 0, 0, 0, 0]` (classes 1 and 3 present).
+
 **Used by:** `box_supervised`, `boxinst`
 
 ### Point (`point`)
 
-Click points as `[x, y, class_id]` tuples (normalised coordinates).
+Each image can have multiple click points. Points support **variable-length** per image. Two annotation formats are supported:
+
+**Format 1: Simple tuple with class ID**
 
 ```json
 [
@@ -89,11 +111,32 @@ Click points as `[x, y, class_id]` tuples (normalised coordinates).
 ]
 ```
 
+**Format 2: Per-point class (instance-level annotations)**
+
+```json
+[
+  {
+    "image": "img_0001.png",
+    "points": [
+      {"point": [0.5, 0.3], "class": 1},
+      {"point": [0.2, 0.7], "class": 0},
+      {"point": [0.8, 0.6], "class": 2}
+    ]
+  }
+]
+```
+
+Coordinates are normalised `[x, y]` in `[0, 1]` range. The dataset automatically scales them to image size.
+
+**Instance-to-semantic conversion:** Per-point classes are automatically converted to image-level multi-labels, same as box conversion.
+
 **Used by:** `point`, `click_supervision`, `iseg`
 
 ### Scribble (`scribble`)
 
-Scribble lines as `[x, y]` coordinate pairs (normalised).
+Each image can have multiple scribbles. Scribbles support **variable-length** per image. Two annotation formats are supported:
+
+**Format 1: Simple (all scribbles share same class)**
 
 ```json
 [
@@ -104,7 +147,36 @@ Scribble lines as `[x, y]` coordinate pairs (normalised).
 ]
 ```
 
+**Format 2: Per-scribble class (instance-level annotations)**
+
+```json
+[
+  {
+    "image": "img_0001.png",
+    "scribbles": [
+      {"scribble": [[0.1, 0.2], [0.15, 0.25]], "class": 1},
+      {"scribble": [[0.5, 0.5], [0.55, 0.6]], "class": 3}
+    ]
+  }
+]
+```
+
+Coordinates are normalised `[x, y]` in `[0, 1]` range. Each scribble is a list of coordinate pairs forming a stroke.
+
+**Instance-to-semantic conversion:** Per-scribble classes are automatically converted to image-level multi-labels, same as box/point conversion.
+
 **Used by:** `scribble_sup`
+
+### Variable-Length Support
+
+All spatial annotation types (boxes, points, scribbles) support **variable number of instances per image**. The custom collate function `weak_supervision_collate()` in `train_weakly_supervised.py` returns lists of tensors instead of stacked tensors for these fields, avoiding padding or truncation.
+
+```python
+# In train_weakly_supervised.py
+def weak_supervision_collate(batch):
+    # boxes, box_classes, points, point_classes, scribbles are kept as lists
+    # Everything else is stacked normally
+```
 
 ### Pre-computed CAMs (optional)
 
@@ -120,10 +192,23 @@ data:
 | Type | Annotation | Dataset Class | Methods |
 |------|-----------|---------------|---------|
 | Image-level | Class label | `ImageLabelDataset` | cam, mil, seam, puzzle_cam, advcam, mctformer, + 12 extended |
-| Box | Bounding box | `BoxSupervisedDataset` | box_supervised, boxinst |
-| Point | Click points | `WeaklySupervisedDataset(point)` | point, click_supervision, iseg |
-| Scribble | Scribble lines | `WeaklySupervisedDataset(scribble)` | scribble_sup |
+| Box | Bounding box (variable-length, per-box class) | `BoxSupervisedDataset` | box_supervised, boxinst |
+| Point | Click points (variable-length, per-point class) | `WeaklySupervisedDataset(point)` | point, click_supervision, iseg |
+| Scribble | Scribble lines (variable-length, per-scribble class) | `WeaklySupervisedDataset(scribble)` | scribble_sup |
 | Mixed | Multiple types | — | sam_guided_weak, eps |
+
+### Methods Requiring Annotation Files
+
+The following methods require specific annotation files to be configured in the YAML:
+
+| Method | Annotation File | YAML Key |
+|--------|----------------|----------|
+| `box_supervised` | boxes.json | `data.annotation_file` |
+| `boxinst` | boxes.json | `data.annotation_file` |
+| `point` | points.json | `data.annotation_file` |
+| `scribble_sup` | scribbles.json | `data.annotation_file` |
+| `gated_crf` | weak_labels.json | `data.label_file` |
+| `tree_energy` | sparse_labels.json | `data.label_file` |
 
 ## YAML Config
 

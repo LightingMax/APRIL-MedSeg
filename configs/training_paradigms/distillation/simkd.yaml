@@ -46,7 +46,7 @@ distillation:
   method: simkd
   weight: 1.0
   feature_layers:
-    - encoder
+    - encoder.layer4
   params:
     student_channels: 512
     teacher_channels: 512

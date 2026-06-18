@@ -235,6 +235,10 @@ class ToCoLoss(nn.Module):
                 supplied, GAP(cam_tokens) is used.
             labeled_loss: Optional pre-computed dense supervised term.
         """
+        if patch_tokens.dim() != 3:
+            raise ValueError(
+                f"patch_tokens must be (B,N,D); got {tuple(patch_tokens.shape)}"
+            )
         if cam_tokens.dim() == 4:
             B, C, H, W = cam_tokens.shape
             cam_tokens = cam_tokens.view(B, C, H * W)

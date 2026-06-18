@@ -209,6 +209,12 @@ def train_one_epoch(
             student_output = student_model(images)
             student_feats = {}
 
+        # Normalise multi-output models to a single logit tensor.
+        if isinstance(teacher_output, (list, tuple)):
+            teacher_output = teacher_output[0]
+        if isinstance(student_output, (list, tuple)):
+            student_output = student_output[0]
+
         # Convert feature dicts → ordered lists (most KD losses expect lists).
         s_feat_list = [v for _, v in sorted(student_feats.items())]
         t_feat_list = [v for _, v in sorted(teacher_feats.items())]
@@ -223,11 +229,21 @@ def train_one_epoch(
             'student_pred': student_output, 'teacher_pred': teacher_output,
             'student': student_output, 'teacher': teacher_output,
             'student_features': student_feats, 'teacher_features': teacher_feats,
-            'feat_S': s_feat_list, 'feat_T': t_feat_list,
-            's_feats': s_feat_list, 't_feats': t_feat_list,
-            'features_student': s_feat_list, 'features_teacher': t_feat_list,
             'target': labels, 'labels': labels,
         }
+        # Only pass feat_S/feat_T when features were actually captured.
+        # When no features are available, pass logits as fallback so
+        # tensor-based losses (e.g. CWD) still receive their required args.
+        if s_feat_list and t_feat_list:
+            ctx.update({
+                'feat_S': s_feat_list, 'feat_T': t_feat_list,
+                's_feats': s_feat_list, 't_feats': t_feat_list,
+                'features_student': s_feat_list, 'features_teacher': t_feat_list,
+            })
+        else:
+            # No intermediate features hooked — use logits as fallback.
+            ctx['feat_S'] = student_output
+            ctx['feat_T'] = teacher_output
         kept = _filter_kwargs_for(distillation_loss.forward, ctx)
         kd_loss = distillation_loss(**kept)
 

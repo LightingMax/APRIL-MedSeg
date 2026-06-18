@@ -67,11 +67,12 @@ class WeaklySupervisedDataset(Dataset):
         
         # Load weak annotations based on type
         if self.supervision_type == 'box':
-            boxes = self._load_boxes(ann)
-            image_labels = self._boxes_to_image_labels(boxes)
+            boxes, box_classes = self._load_boxes(ann)
+            image_labels = self._boxes_to_image_labels(box_classes)
             return {
                 'image': image,
-                'boxes': boxes,
+                'boxes': boxes,          # (N, 4) variable length, no padding
+                'box_classes': box_classes,  # (N,) per-box class indices
                 'image_labels': image_labels,
                 'case_name': ann.get('case_name', os.path.basename(ann['image']))
             }
@@ -83,17 +84,23 @@ class WeaklySupervisedDataset(Dataset):
                 'case_name': ann.get('case_name', os.path.basename(ann['image']))
             }
         elif self.supervision_type == 'point':
-            points = self._load_points(ann)
+            points, point_classes = self._load_points(ann)
+            image_labels = self._points_to_image_labels(point_classes)
             return {
                 'image': image,
-                'points': points,
+                'points': points,              # (N, 2) variable length
+                'point_classes': point_classes,  # (N,) per-point class indices
+                'image_labels': image_labels,
                 'case_name': ann.get('case_name', os.path.basename(ann['image']))
             }
         elif self.supervision_type == 'scribble':
-            scribbles = self._load_scribbles(ann)
+            scribbles, scribble_classes = self._load_scribbles(ann)
+            image_labels = self._scribbles_to_image_labels(scribble_classes)
             return {
                 'image': image,
-                'scribbles': scribbles,
+                'scribbles': scribbles,              # (N, 2) flattened points
+                'scribble_classes': scribble_classes,  # (M,) per-scribble class indices
+                'image_labels': image_labels,
                 'case_name': ann.get('case_name', os.path.basename(ann['image']))
             }
     
@@ -108,39 +115,78 @@ class WeaklySupervisedDataset(Dataset):
             dummy_mask = np.zeros(image.shape[:2], dtype=np.int64)
             sample = self.transform({"image": image, "label": dummy_mask})
             image = sample["image"]
+            # Transpose HWC -> CHW after transform (matching GenericDataset)
+            if isinstance(image, np.ndarray):
+                image = np.ascontiguousarray(image.transpose(2, 0, 1))
+                image = torch.from_numpy(image).float()
         else:
             image = torch.from_numpy(image.transpose(2, 0, 1)).float()
         
         return image
     
-    def _load_boxes(self, ann: dict) -> torch.Tensor:
-        """Load bounding boxes."""
-        boxes = ann.get('boxes', [])
-        if len(boxes) == 0:
-            return torch.empty(0, 4)
+    def _load_boxes(self, ann: dict) -> Tuple[torch.Tensor, torch.Tensor]:
+        """Load bounding boxes and their class indices.
         
-        boxes = torch.tensor(boxes, dtype=torch.float32)
-        # Scale boxes to image size
+        Supports two JSON formats:
+          1. Simple list: {"boxes": [[x1,y1,x2,y2], ...]}  (all class 0)
+          2. Per-box class: {"boxes": [{"box": [x1,y1,x2,y2], "class": c}, ...]}
+        
+        Coordinates are normalized (0~1) and scaled to image size.
+        
+        Returns:
+            boxes: (N, 4) tensor of [x1,y1,x2,y2] in pixel coords
+            box_classes: (N,) tensor of per-box class indices
+        """
+        boxes_raw = ann.get('boxes', [])
+        if len(boxes_raw) == 0:
+            return torch.empty(0, 4), torch.empty(0, dtype=torch.long)
+        
+        boxes_list = []
+        classes_list = []
+        
+        for item in boxes_raw:
+            if isinstance(item, dict):
+                # Per-box class format
+                box = item['box']
+                cls = item.get('class', 0)
+            elif isinstance(item, (list, tuple)):
+                # Simple format — assume class 0
+                box = item
+                cls = 0
+            else:
+                continue
+            
+            boxes_list.append(box)
+            classes_list.append(cls)
+        
+        boxes = torch.tensor(boxes_list, dtype=torch.float32)
+        box_classes = torch.tensor(classes_list, dtype=torch.long)
+        
+        # Scale normalized coords to image size
         boxes[:, 0] = boxes[:, 0] * self.img_size[0]  # x1
         boxes[:, 1] = boxes[:, 1] * self.img_size[1]  # y1
         boxes[:, 2] = boxes[:, 2] * self.img_size[0]  # x2
         boxes[:, 3] = boxes[:, 3] * self.img_size[1]  # y2
         
-        return boxes
+        return boxes, box_classes
     
-    def _boxes_to_image_labels(self, boxes: torch.Tensor) -> torch.Tensor:
-        """Convert boxes to image-level labels."""
-        image_labels = torch.zeros(self.num_classes)
-        if len(boxes) > 0:
-            # Assume all classes present in boxes are labeled
-            for i in range(len(boxes)):
-                if 'class' in boxes[i]:
-                    class_id = int(boxes[i]['class'])
-                    image_labels[class_id] = 1.0
-                else:
-                    # If no class info, assume all classes present
-                    image_labels[:] = 1.0
+    def _boxes_to_image_labels(self, box_classes: torch.Tensor) -> torch.Tensor:
+        """Convert per-box class indices to image-level labels.
         
+        This is the instance-to-semantic conversion: each box contributes
+        its class to the image-level label set.
+        
+        Args:
+            box_classes: (N,) tensor of per-box class indices.
+        
+        Returns:
+            image_labels: (num_classes,) tensor with 1.0 for present classes.
+        """
+        image_labels = torch.zeros(self.num_classes)
+        if box_classes.numel() > 0:
+            for cls in box_classes.tolist():
+                if 0 <= cls < self.num_classes:
+                    image_labels[cls] = 1.0
         return image_labels
     
     def _load_image_labels(self, ann: dict) -> torch.Tensor:
@@ -162,21 +208,130 @@ class WeaklySupervisedDataset(Dataset):
         
         return image_labels
     
-    def _load_points(self, ann: dict) -> torch.Tensor:
-        """Load point annotations."""
-        points = ann.get('points', [])
-        if len(points) == 0:
-            return torch.empty(0, 3)
+    def _load_points(self, ann: dict) -> Tuple[torch.Tensor, torch.Tensor]:
+        """Load point annotations and their class indices.
         
-        return torch.tensor(points, dtype=torch.float32)
+        Supports two JSON formats:
+          1. Simple list: {"points": [[x,y,class], ...]}
+          2. Per-point class: {"points": [{"point": [x,y], "class": c}, ...]}
+        
+        Coordinates are normalized (0~1) and scaled to image size.
+        
+        Returns:
+            points: (N, 2) tensor of [x,y] in pixel coords
+            point_classes: (N,) tensor of per-point class indices
+        """
+        points_raw = ann.get('points', [])
+        if len(points_raw) == 0:
+            return torch.empty(0, 2), torch.empty(0, dtype=torch.long)
+        
+        points_list = []
+        classes_list = []
+        
+        for item in points_raw:
+            if isinstance(item, dict):
+                pt = item['point']
+                cls = item.get('class', 0)
+            elif isinstance(item, (list, tuple)) and len(item) >= 3:
+                # Simple format: [x, y, class]
+                pt = [item[0], item[1]]
+                cls = item[2]
+            elif isinstance(item, (list, tuple)) and len(item) == 2:
+                # No class info — default class 0
+                pt = item
+                cls = 0
+            else:
+                continue
+            
+            points_list.append(pt)
+            classes_list.append(cls)
+        
+        points = torch.tensor(points_list, dtype=torch.float32)
+        point_classes = torch.tensor(classes_list, dtype=torch.long)
+        
+        # Scale normalized coords to image size
+        points[:, 0] = points[:, 0] * self.img_size[0]  # x
+        points[:, 1] = points[:, 1] * self.img_size[1]  # y
+        
+        return points, point_classes
     
-    def _load_scribbles(self, ann: dict) -> torch.Tensor:
-        """Load scribble annotations."""
-        scribbles = ann.get('scribbles', [])
-        if len(scribbles) == 0:
-            return torch.empty(0, 2)
+    def _points_to_image_labels(self, point_classes: torch.Tensor) -> torch.Tensor:
+        """Convert per-point class indices to image-level labels.
         
-        return torch.tensor(scribbles, dtype=torch.float32)
+        Args:
+            point_classes: (N,) tensor of per-point class indices.
+        
+        Returns:
+            image_labels: (num_classes,) tensor with 1.0 for present classes.
+        """
+        image_labels = torch.zeros(self.num_classes)
+        if point_classes.numel() > 0:
+            for cls in point_classes.tolist():
+                if 0 <= cls < self.num_classes:
+                    image_labels[cls] = 1.0
+        return image_labels
+    
+    def _load_scribbles(self, ann: dict) -> Tuple[torch.Tensor, torch.Tensor]:
+        """Load scribble annotations and their class indices.
+        
+        Supports two JSON formats:
+          1. Simple list: {"scribbles": [[x,y], [x,y], ...]}  (all class 0)
+          2. Per-scribble class: {"scribbles": [{"scribble": [[x,y],...], "class": c}, ...]}
+        
+        Coordinates are normalized (0~1) and scaled to image size.
+        
+        Returns:
+            scribbles: (N, 2) tensor of all [x,y] points (all scribbles flattened)
+            scribble_classes: (M,) tensor of per-scribble class indices
+                (M = number of scribbles, N = total points across all scribbles)
+        """
+        scribbles_raw = ann.get('scribbles', [])
+        if len(scribbles_raw) == 0:
+            return torch.empty(0, 2), torch.empty(0, dtype=torch.long)
+        
+        points_list = []
+        classes_list = []
+        
+        for item in scribbles_raw:
+            if isinstance(item, dict):
+                pts = item['scribble']
+                cls = item.get('class', 0)
+            elif isinstance(item, (list, tuple)):
+                # Simple format: [[x,y], [x,y], ...]
+                pts = item
+                cls = 0
+            else:
+                continue
+            
+            for pt in pts:
+                points_list.append(pt)
+            classes_list.append(cls)
+        
+        scribbles = torch.tensor(points_list, dtype=torch.float32)
+        scribble_classes = torch.tensor(classes_list, dtype=torch.long)
+        
+        if scribbles.numel() > 0:
+            # Scale normalized coords to image size
+            scribbles[:, 0] = scribbles[:, 0] * self.img_size[0]
+            scribbles[:, 1] = scribbles[:, 1] * self.img_size[1]
+        
+        return scribbles, scribble_classes
+    
+    def _scribbles_to_image_labels(self, scribble_classes: torch.Tensor) -> torch.Tensor:
+        """Convert per-scribble class indices to image-level labels.
+        
+        Args:
+            scribble_classes: (M,) tensor of per-scribble class indices.
+        
+        Returns:
+            image_labels: (num_classes,) tensor with 1.0 for present classes.
+        """
+        image_labels = torch.zeros(self.num_classes)
+        if scribble_classes.numel() > 0:
+            for cls in scribble_classes.tolist():
+                if 0 <= cls < self.num_classes:
+                    image_labels[cls] = 1.0
+        return image_labels
 
 
 class BoxSupervisedDataset(WeaklySupervisedDataset):
