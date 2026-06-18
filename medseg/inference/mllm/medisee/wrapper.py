@@ -58,6 +58,41 @@ class MediSeeWrapper(nn.Module):
 
     is_text_guided: bool = True
 
+    def _ensure_built(self):
+        """Ensure the model is built before accessing parameters or state."""
+        if not self._built:
+            self.build()
+
+    def parameters(self, recurse: bool = True):
+        """Proxy to _model.parameters() after build."""
+        self._ensure_built()
+        return self._model.parameters(recurse=recurse)
+
+    def state_dict(self, *args, **kwargs):
+        """Proxy to _model.state_dict() after build."""
+        self._ensure_built()
+        return self._model.state_dict(*args, **kwargs)
+
+    def load_state_dict(self, *args, **kwargs):
+        """Proxy to _model.load_state_dict() after build."""
+        self._ensure_built()
+        return self._model.load_state_dict(*args, **kwargs)
+
+    def to(self, *args, **kwargs):
+        """Proxy to _model.to() after build."""
+        self._ensure_built()
+        return self._model.to(*args, **kwargs)
+
+    def train(self, mode: bool = True):
+        """Proxy to _model.train() after build."""
+        self._ensure_built()
+        return self._model.train(mode)
+
+    def eval(self):
+        """Proxy to _model.eval() after build."""
+        self._ensure_built()
+        return self._model.eval()
+
     def __init__(
         self,
         in_channels: int = 3,

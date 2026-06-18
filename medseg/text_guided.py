@@ -65,9 +65,10 @@ class CLIPTextEncoder(nn.Module):
 
         # HF transformers is a hard requirement — no try/except
         from transformers import CLIPTextModel, CLIPTokenizer  # type: ignore
+        from medseg.utils.weight_downloader import hf_from_pretrained
 
         self._tokenizer = CLIPTokenizer.from_pretrained(model_name)
-        self._clip_text_model = CLIPTextModel.from_pretrained(model_name)
+        self._clip_text_model = hf_from_pretrained(CLIPTextModel, model_name, use_safetensors=True)
         clip_dim = self._clip_text_model.config.hidden_size  # 512 for ViT-B/32
 
         # Freeze CLIP text tower weights

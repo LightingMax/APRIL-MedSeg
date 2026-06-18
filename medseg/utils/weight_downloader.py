@@ -943,9 +943,39 @@ def hf_from_pretrained(
 
         from medseg.utils.weight_downloader import hf_from_pretrained
         model = hf_from_pretrained(AutoModel, "microsoft/BiomedVLP-CXR-BERT-specialized")
+
+    If torch.load version check fails (transformers >= 4.48 + torch < 2.6),
+    automatically retry with ``use_safetensors=True``.
     """
     try:
+        kwargs.setdefault("trust_remote_code", True)
         return cls.from_pretrained(pretrained_model_name_or_path, *args, **kwargs)
+    except ValueError as e:
+        err_str = str(e).lower()
+        if ("upgrade torch" in err_str or "torch.load" in err_str or "safetensors" in err_str):
+            # transformers/torch require newer torch for torch.load; retry with safetensors
+            if not kwargs.get("use_safetensors", False):
+                kwargs["use_safetensors"] = True
+                try:
+                    return cls.from_pretrained(
+                        pretrained_model_name_or_path, *args, **kwargs
+                    )
+                except Exception:
+                    pass  # Fall through to original error
+        raise WeightDownloadError(
+            f"\nFailed to load HF model '{pretrained_model_name_or_path}' "
+            f"via {cls.__name__}.from_pretrained.\n"
+            f"  underlying error: {type(e).__name__}: {e}\n"
+            f"  manual download: https://huggingface.co/{pretrained_model_name_or_path}\n"
+            f"  instructions:\n"
+            f"    1. If the repo is gated (e.g. Llama / CogVLM), "
+            f"`huggingface-cli login` with an account that has access.\n"
+            f"    2. Downloads retry automatically via hf-mirror.com when the official "
+            f"Hub is unreachable. Pin an endpoint with MEDSEG_HF_MIRROR=1 or "
+            f"HF_ENDPOINT if needed.\n"
+            f"    3. To use a local copy, pass the local directory path "
+            f"instead of the repo id.\n"
+        ) from e
     except Exception as e:
         raise WeightDownloadError(
             f"\nFailed to load HF model '{pretrained_model_name_or_path}' "

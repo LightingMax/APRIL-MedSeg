@@ -94,6 +94,22 @@ def patch_common(cfg):
     t['num_workers'] = 0
     t['val_interval'] = 1
     t['save_interval'] = 9999
+    # Coerce lr/min_lr to float — YAML may parse scientific notation as str
+    opt = t.get('optimizer', {})
+    if isinstance(opt, dict):
+        if 'lr' in opt:
+            opt['lr'] = float(str(opt['lr']))
+        if 'weight_decay' in opt:
+            opt['weight_decay'] = float(str(opt['weight_decay']))
+    # Also handle top-level training.lr (some configs put lr directly here)
+    if 'lr' in t and isinstance(t['lr'], str):
+        t['lr'] = float(t['lr'])
+    sched = t.get('scheduler', {})
+    if isinstance(sched, dict):
+        if 'min_lr' in sched and isinstance(sched['min_lr'], str):
+            sched['min_lr'] = float(sched['min_lr'])
+        if 'warmup_lr' in sched and isinstance(sched['warmup_lr'], str):
+            sched['warmup_lr'] = float(sched['warmup_lr'])
     # Disable pretrained to avoid network downloads
     if 'model' in cfg:
         enc = cfg['model'].get('encoder', {})
@@ -270,48 +286,37 @@ def run_semi(timeout, gpu_id):
 # Distillation
 # ──────────────────────────────────────────────────────────────────
 
-def _ensure_teacher_ckpt():
-    ckpt_dir = os.path.join(BASE_DIR, 'checkpoints')
-    os.makedirs(ckpt_dir, exist_ok=True)
-    path = os.path.join(ckpt_dir, 'teacher_model.pth')
-    if not os.path.exists(path):
-        torch.save({'model_state_dict': {'dummy': torch.zeros(1)}}, path)
-    return path
-
-
-def _kd_builder(teacher_ckpt):
-    def builder(cfg, name):
-        cfg = patch_common(cfg)
-        data = cfg.setdefault('data', {})
-        data['type'] = 'image_mask'
-        data.setdefault('source', {
-            'image_dir': './data/source/images',
-            'mask_dir': './data/source/masks',
-        })
-        data.setdefault('target', {'image_dir': './data/target/images'})
-        data.setdefault('val', {
-            'image_dir': './data/target_val/images',
-            'mask_dir': './data/target_val/masks',
-        })
-        out_dir = os.path.join(OUTPUT_DIR, f'kd_{name}')
-        os.makedirs(out_dir, exist_ok=True)
-        p = make_patched_yaml(cfg, f'kd_{name}')
-        cmd = [PYTHON, 'train_distillation.py',
-               '--teacher_config', p,
-               '--student_config', p,
-               '--teacher_ckpt', teacher_ckpt,
-               '--output_dir', out_dir]
-        return p, None, cmd
-    return builder
+def _kd_builder(cfg, name):
+    cfg = patch_common(cfg)
+    data = cfg.setdefault('data', {})
+    data['type'] = 'image_mask'
+    # Use flat train_dir/val_dir so _resolve_split_dir returns the path
+    # directly; DA-style nested source.image_dir would be passed as root_dir
+    # to GenericDataset which would re-append /images causing a double path.
+    data.pop('source', None)
+    data.pop('target', None)
+    data.pop('val', None)
+    data['train_dir'] = './data/_test_dummy/train'
+    data['val_dir'] = './data/_test_dummy/val'
+    # Build a real teacher checkpoint matching this model config
+    teacher_ckpt = _make_matching_ckpt(cfg, f'teacher_{name}')
+    out_dir = os.path.join(OUTPUT_DIR, f'kd_{name}')
+    os.makedirs(out_dir, exist_ok=True)
+    p = make_patched_yaml(cfg, f'kd_{name}')
+    cmd = [PYTHON, 'train_distillation.py',
+           '--teacher_config', p,
+           '--student_config', p,
+           '--teacher_ckpt', teacher_ckpt,
+           '--output_dir', out_dir]
+    return p, None, cmd
 
 
 def run_kd(timeout, gpu_id):
     print(f'\n{"="*70}\n  DISTILLATION\n{"="*70}')
-    teacher_ckpt = _ensure_teacher_ckpt()
     d = os.path.join(CONFIGS_DIR, 'training_paradigms', 'distillation')
     for yf in sorted(os.listdir(d)):
         if yf.endswith('.yaml'):
-            run_yaml('KD', os.path.join(d, yf), _kd_builder(teacher_ckpt), timeout, gpu_id)
+            run_yaml('KD', os.path.join(d, yf), _kd_builder, timeout, gpu_id)
 
 
 # ──────────────────────────────────────────────────────────────────
@@ -321,11 +326,58 @@ def run_kd(timeout, gpu_id):
 def _weak_builder(cfg, name):
     cfg = patch_common(cfg)
     data = cfg.setdefault('data', {})
-    data['type'] = 'image_mask'
-    if 'train_dir' not in data and 'root_dir' not in data:
-        data['root_dir'] = './data/_test_dummy/train'
-    data.setdefault('val_dir', './data/_test_dummy/val')
-    sup_type = cfg.get('weak_supervision', {}).get('supervision_type', 'box')
+    method = cfg.get('weak_supervision', {}).get('method', 'box')
+
+    # Methods that need annotation files → type='weak' (WeaklySupervisedDataset)
+    needs_annotation = {
+        'box_supervised': ('box', './data/annotations/boxes.json'),
+        'boxinst':        ('box', './data/annotations/boxes.json'),
+        'point':          ('point', './data/annotations/points.json'),
+        'scribble_sup':   ('scribble', './data/annotations/scribbles.json'),
+    }
+
+    if method in needs_annotation:
+        sup_type_default, ann_file = needs_annotation[method]
+        data['type'] = 'weak'
+        data['annotation_file'] = ann_file
+        data['supervision_type'] = sup_type_default
+        data['train_dir'] = './data'
+        data['image_dir'] = './data/images'
+    else:
+        data['type'] = 'image_mask'
+
+    # build_dataset passes root_dir=data_cfg.get(f'{split}_dir', data_cfg.get('root_dir'))
+    # to GenericDataset. GenericDataset then looks for <root_dir>/images/ + <root_dir>/masks/
+    data['root_dir'] = './data'  # train: finds ./data/images/ + ./data/masks/
+    data['val_dir'] = './data/val'  # val: finds ./data/val/images/ + ./data/val/masks/
+    data['test_dir'] = './data/test'  # test: finds ./data/test/images/ + ./data/test/masks/
+    # Remove image_dir/mask_dir which GenericDataset doesn't use in split mode
+    # But keep them for type='weak' which uses WeaklySupervisedDataset
+    if data['type'] != 'weak':
+        data.pop('image_dir', None)
+    data.pop('mask_dir', None)
+    # Patch annotation file paths
+    ann_root = './data/annotations'
+    if 'annotation_file' in data:
+        ann_name = os.path.basename(str(data['annotation_file']))
+        data['annotation_file'] = os.path.join(ann_root, ann_name)
+    if 'label_file' in data:
+        data['label_file'] = os.path.join(ann_root, 'image_labels.json')
+    if 'cam_dir' in data:
+        data['cam_dir'] = './data/cams'
+    if 'saliency_dir' in data:
+        data['saliency_dir'] = './data/saliency'
+    if 'sam_pseudo_dir' in data:
+        data['sam_pseudo_dir'] = './data/sam_pseudo'
+    if 'sam_confidence_dir' in data:
+        data['sam_confidence_dir'] = './data/sam_confidence'
+    sup_type = cfg.get('weak_supervision', {}).get('supervision_type', method)
+    # Methods that need image_labels should use 'image_label' supervision_type
+    # so GenericDataset loads the image_labels annotation
+    image_label_methods = {'lpcam', 'bacon', 'mars', 'dupl', 'cam', 'affinity', 'gated_crf', 'mil',
+                           'more', 'psdpm', 'recam', 'semples', 'toco'}
+    if method in image_label_methods and sup_type == method:
+        sup_type = 'image_label'
     out_dir = os.path.join(OUTPUT_DIR, f'weak_{name}')
     os.makedirs(out_dir, exist_ok=True)
     p = make_patched_yaml(cfg, f'weak_{name}')
@@ -349,6 +401,10 @@ def run_weak(timeout, gpu_id):
 # ──────────────────────────────────────────────────────────────────
 
 def _text_builder(cfg, name):
+    # Skip MLLM pipeline configs (grounding_dino, internvl, qwen) — inference only
+    if 'mllm' in cfg and 'model' not in cfg:
+        return None, 'MLLM pipeline (inference only, not trainable)', None
+
     # Skip if external checkpoint required (SAM, etc.)
     mllm = cfg.get('mllm', {})
     if isinstance(mllm, dict):
@@ -368,7 +424,9 @@ def _text_builder(cfg, name):
         data['test_list'] = './data/Synapse/lists/lists_Synapse/test_vol.txt'
     elif data_type in ('lvit', 'qata', 'mosmed'):
         dataset_name = 'QaTa-COV19' if data_type in ('lvit', 'qata') else 'MosMedDataPlus'
-        data['root_dir'] = f'./data/{dataset_name}'
+        data_path = f'./data/{dataset_name}'
+        data['data_root'] = data_path
+        data['root_dir'] = data_path
 
     out_dir = os.path.join(OUTPUT_DIR, f'text_{name}')
     os.makedirs(out_dir, exist_ok=True)
@@ -380,6 +438,9 @@ def _text_builder(cfg, name):
 def run_text(timeout, gpu_id):
     print(f'\n{"="*70}\n  TEXT-GUIDED\n{"="*70}')
     d = os.path.join(CONFIGS_DIR, 'training_paradigms', 'text_guided')
+    # Text-guided models need longer timeouts (HF weight downloads)
+    # MediSee alone needs 17GB; give everything 60 min
+    timeout = max(timeout, 3600)
     for yf in sorted(os.listdir(d)):
         if yf.endswith('.yaml'):
             run_yaml('Text', os.path.join(d, yf), _text_builder, timeout, gpu_id)
